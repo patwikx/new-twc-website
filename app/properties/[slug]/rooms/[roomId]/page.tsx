@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { PROPERTIES } from "@/lib/mock-data";
+import { FloorPlanViewer } from "@/components/property/FloorPlanViewer";
 import { ArrowLeft, Bed, Check, Users, Wifi, Wind } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -90,6 +91,17 @@ export default async function RoomDetailsPage({ params, searchParams }: Props) {
                   </div>
                </div>
             </div>
+
+            {room.floorPlan && (
+               <div className="border-t border-white/10 pt-12 mt-12 mb-12">
+                   <h2 className="text-3xl font-serif italic mb-8">Room Layout</h2>
+                   <FloorPlanViewer 
+                       image={room.floorPlan.image}
+                       hotspots={room.floorPlan.hotspots}
+                       propertyName={room.name}
+                   />
+               </div>
+            )}
 
             <div className="aspect-video relative rounded-none overflow-hidden mt-8">
                <Image

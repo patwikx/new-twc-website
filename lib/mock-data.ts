@@ -11,6 +11,18 @@ export interface Room {
   description: string;
   amenities: string[];
   image: string;
+  floorPlan?: {
+    image: string;
+    hotspots: FloorPlanHotspot[];
+  };
+}
+
+export interface FloorPlanHotspot {
+  id: string;
+  label: string;
+  type: "room" | "pool" | "restaurant" | "spa" | "lobby" | "gym" | "beach" | "bed" | "bath" | "balcony" | "living";
+  description: string;
+  position: { x: number; y: number }; // Percentage-based position
 }
 
 export interface Property {
@@ -23,6 +35,26 @@ export interface Property {
   image: string;
   gallery: string[];
   rooms: Room[];
+  floorPlan?: {
+    image: string;
+    hotspots: FloorPlanHotspot[];
+  };
+  facebookPageId?: string;
+}
+
+export interface LocalExperience {
+// ... existing interface
+}
+
+
+
+export interface LocalExperience {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  category: "Nature" | "Culture" | "Food" | "Adventure" | "Wellness";
+  distance: string;
 }
 
 export const PROPERTIES: Property[] = [
@@ -39,6 +71,18 @@ export const PROPERTIES: Property[] = [
       "https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2025&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=1974&auto=format&fit=crop"
     ],
+    facebookPageId: "100083282241697",
+    floorPlan: {
+      image: "https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2025&auto=format&fit=crop",
+      hotspots: [
+        { id: "lobby", label: "Grand Lobby", type: "lobby", description: "Our stunning double-height lobby welcomes you with contemporary Filipino design elements.", position: { x: 50, y: 85 } },
+        { id: "restaurant", label: "Cafe Rodrigo", type: "restaurant", description: "Award-winning dining experience featuring farm-to-table cuisine.", position: { x: 25, y: 70 } },
+        { id: "gym", label: "Fitness Center", type: "gym", description: "State-of-the-art equipment available 24/7 for our guests.", position: { x: 75, y: 70 } },
+        { id: "pool", label: "Infinity Pool", type: "pool", description: "Rooftop infinity pool with panoramic city views.", position: { x: 50, y: 25 } },
+        { id: "rooms-std", label: "Standard Rooms", type: "room", description: "Floors 3-5: Elegant rooms with city views.", position: { x: 30, y: 45 } },
+        { id: "rooms-suite", label: "Executive Suites", type: "room", description: "Floors 6-8: Spacious suites for the discerning traveler.", position: { x: 70, y: 45 } },
+      ],
+    },
     rooms: [
       {
         id: "ah-std",
@@ -48,6 +92,14 @@ export const PROPERTIES: Property[] = [
         description: "Elegant room with stunning views of General Santos.",
         amenities: ["Wi-Fi", "Smart TV", "Mini Bar", "City View"],
         image: "https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=2070&auto=format&fit=crop",
+        floorPlan: {
+          image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=2158&auto=format&fit=crop", // Placeholder floor plan
+          hotspots: [
+             { id: "bed", label: "Queen Bed", type: "bed", description: "Plush queen-sized bed with premium linens.", position: { x: 30, y: 50 } },
+             { id: "bath", label: "Ensuite Bathroom", type: "bath", description: "Modern bathroom with rain shower.", position: { x: 70, y: 30 } },
+             { id: "view", label: "City View Window", type: "balcony", description: "Floor-to-ceiling windows overlooking the city.", position: { x: 50, y: 10 } }
+          ]
+        }
       },
       {
         id: "ah-suite",
@@ -57,6 +109,14 @@ export const PROPERTIES: Property[] = [
         description: "Spacious suite for the business traveler.",
         amenities: ["Wi-Fi", "Workspace", "Lounge Access", "Bath Tub"],
         image: "https://images.unsplash.com/photo-1591088398332-8a7791972843?q=80&w=1974&auto=format&fit=crop",
+        floorPlan: {
+           image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?q=80&w=2158&auto=format&fit=crop",
+           hotspots: [
+              { id: "bed", label: "King Bed", type: "bed", description: "King-sized bed for ultimate comfort.", position: { x: 30, y: 50 } },
+              { id: "living", label: "Living Area", type: "living", description: "Separate living area with sofa and workspace.", position: { x: 70, y: 70 } },
+              { id: "bath", label: "Master Bath", type: "bath", description: "Luxurious bathroom with soaking tub.", position: { x: 70, y: 30 } }
+           ]
+        }
       },
     ],
   },
@@ -73,6 +133,7 @@ export const PROPERTIES: Property[] = [
         "https://images.unsplash.com/photo-1587061949409-02df41d5b1d7?q=80&w=2070&auto=format&fit=crop",
         "https://images.unsplash.com/photo-1445019980597-93fa8acb246c?q=80&w=2074&auto=format&fit=crop"
     ],
+    facebookPageId: "123456789012345",
     rooms: [
       {
         id: "df-cabin",
@@ -197,3 +258,69 @@ export const POLICIES = [
   { title: "Pets", description: "Pets are not allowed within the hotel premises, with the exception of service animals." },
 ];
 
+export const LOCAL_EXPERIENCES: LocalExperience[] = [
+  {
+    id: "seven-falls",
+    title: "Seven Falls of Lake Sebu",
+    description: "Marvel at the majestic seven waterfalls connected by a thrilling zipline adventure. A must-see natural wonder in the heart of South Cotabato.",
+    image: "https://images.unsplash.com/photo-1432405972618-c60b0225b8f9?q=80&w=2070&auto=format&fit=crop",
+    category: "Nature",
+    distance: "45 min from Dolores Lake Resort",
+  },
+  {
+    id: "tboli-village",
+    title: "T'boli Cultural Village",
+    description: "Immerse yourself in the rich heritage of the T'boli tribe. Experience traditional weaving, music, and dance performances.",
+    image: "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?q=80&w=2064&auto=format&fit=crop",
+    category: "Culture",
+    distance: "30 min from Dolores Lake Resort",
+  },
+  {
+    id: "tuna-capital",
+    title: "General Santos Fish Port",
+    description: "Witness the bustling activity of the Tuna Capital of the Philippines. Sample the freshest sashimi straight from the ocean.",
+    image: "https://images.unsplash.com/photo-1534604973900-c43ab4c2e0ab?q=80&w=2069&auto=format&fit=crop",
+    category: "Food",
+    distance: "10 min from Anchor Hotel",
+  },
+  {
+    id: "mt-matutum",
+    title: "Mount Matutum Trek",
+    description: "Conquer the summit of this majestic stratovolcano and be rewarded with breathtaking views of Sarangani Bay and surrounding provinces.",
+    image: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=2070&auto=format&fit=crop",
+    category: "Adventure",
+    distance: "1 hr from Dolores Farm Resort",
+  },
+  {
+    id: "spa-wellness",
+    title: "Traditional Hilot Massage",
+    description: "Experience the ancient Filipino art of healing. Our partner spas offer authentic Hilot treatments using locally-sourced oils and herbs.",
+    image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?q=80&w=2070&auto=format&fit=crop",
+    category: "Wellness",
+    distance: "Available at all properties",
+  },
+  {
+    id: "sarangani-bay",
+    title: "Sarangani Bay Island Hopping",
+    description: "Explore pristine islands, snorkel in crystal-clear waters, and enjoy a beach barbecue under the sun.",
+    image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=2073&auto=format&fit=crop",
+    category: "Adventure",
+    distance: "20 min from Dolores Tropicana Resort",
+  },
+  {
+    id: "pineapple-farm",
+    title: "Dole Pineapple Plantation Tour",
+    description: "Take a guided tour through one of the world's largest pineapple plantations and taste the sweetest pineapples on earth.",
+    image: "https://images.unsplash.com/photo-1490885578174-acda8905c2c6?q=80&w=2069&auto=format&fit=crop",
+    category: "Nature",
+    distance: "15 min from Dolores Farm Resort",
+  },
+  {
+    id: "gensan-food-trip",
+    title: "GenSan Food Crawl",
+    description: "A curated culinary journey through General Santos City's best kept secrets – from grilled tuna belly to local delicacies.",
+    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=2087&auto=format&fit=crop",
+    category: "Food",
+    distance: "Various locations",
+  },
+];

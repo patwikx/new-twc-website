@@ -5,6 +5,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { BookingWidget } from "@/components/booking/BookingWidget";
+import { RoomCard } from "@/components/property/RoomCard";
+import { FloorPlanViewer } from "@/components/property/FloorPlanViewer";
 
 // In a real app, strict typing for params is needed depending on Next.js version
 // but for now, we'll cast or assume it works.
@@ -60,50 +62,31 @@ export default async function PropertyDetailsPage({ params }: PageProps) {
             <h2 className="text-3xl font-serif mb-8 text-center italic">Accommodations</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                {property.rooms.map((room) => (
-                 <div key={room.id} className="border border-white/5 rounded-none overflow-hidden bg-card/50 hover:bg-card hover:shadow-lg transition-all duration-300 group">
-                    <div className="aspect-video bg-neutral-200 relative overflow-hidden">
-                      <Image
-                        src={room.image || property.image} 
-                        alt={room.name}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-700"
-                      />
-                    </div>
-                    <div className="p-6 space-y-4">
-                       <div className="flex justify-between items-start">
-                         <h3 className="text-xl font-semibold">{room.name}</h3>
-                         <div className="text-right">
-                           <span className="block font-bold">₱{room.price.toLocaleString()}</span>
-                           <span className="text-xs text-muted-foreground">per night</span>
-                         </div>
-                       </div>
-                       <p className="text-sm text-muted-foreground">{room.description}</p>
-                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Users className="h-4 w-4" /> {room.capacity} Guests
-                       </div>
-                       <div className="flex flex-wrap gap-2 pt-2">
-                         {room.amenities.map(amenity => (
-                           <span key={amenity} className="text-xs bg-secondary px-2 py-1 rounded-sm">
-                             {amenity}
-                           </span>
-                         ))}
-                       </div>
-                       <div className="flex flex-col gap-3 mt-6">
-                          <Link href={`/properties/${slug}/rooms/${room.id}`} className="w-full">
-                            <Button variant="outline" className="w-full h-12 rounded-none tracking-widest text-xs uppercase border-white/20 hover:bg-white hover:text-black transition-all duration-500">View Details</Button>
-                          </Link>
-                          <Link href={`/book?property=${slug}&room=${room.id}`} className="w-full">
-                            <Button className="w-full h-12 rounded-none tracking-widest text-xs uppercase bg-white text-black hover:bg-neutral-200 transition-all duration-500">Book Now</Button>
-                          </Link>
-                       </div>
-                    </div>
-                 </div>
+                 <RoomCard key={room.id} room={room} property={property} />
                ))}
             </div>
          </div>
+
+         {/* Interactive Floor Plan Section */}
+         {property.floorPlan && (
+           <div className="py-12 border-t border-white/10 mt-12">
+             <div className="text-center mb-12">
+               <span className="text-orange-500 tracking-widest text-xs uppercase">Interactive Map</span>
+               <h2 className="text-3xl font-serif mt-2 italic">Explore the Property</h2>
+               <p className="text-muted-foreground mt-2 max-w-xl mx-auto">
+                 Discover our world-class amenities and facilities. Click on the markers to learn more about each area.
+               </p>
+             </div>
+             <FloorPlanViewer 
+               image={property.floorPlan.image} 
+               hotspots={property.floorPlan.hotspots}
+               propertyName={property.name}
+             />
+           </div>
+         )}
          
          {/* Booking Section */}
-         <div className="py-12 border-t mt-12">
+         <div className="py-12 border-t border-white/10 mt-12">
            <div className="text-center mb-12">
              <h2 className="text-3xl font-light mb-4">Plan Your Stay</h2>
              <p className="text-muted-foreground">Check availability at {property.name}</p>
