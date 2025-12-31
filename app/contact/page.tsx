@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
 import { Mail, MapPin, Phone, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import axios from "axios";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -15,10 +18,12 @@ export default function ContactPage() {
     email: "",
     contactNumber: "",
     message: "",
-    subject: "General Inquiry", // Default subject
+    subject: "General Inquiry",
   });
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -26,12 +31,21 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!turnstileToken) {
+      setStatus("error");
+      setErrorMessage("Please complete the security check.");
+      return;
+    }
+
     setStatus("loading");
     setErrorMessage("");
 
     try {
-      // Use Axios for the request
-      await axios.post("/api/contact", formData);
+      await axios.post("/api/contact", { 
+        ...formData, 
+        turnstileToken 
+      });
 
       setStatus("success");
       setFormData({ 
@@ -42,12 +56,14 @@ export default function ContactPage() {
           message: "",
           subject: "General Inquiry"
       });
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
     } catch (error: any) {
       console.error("Submission Error:", error);
       setStatus("error");
-      // improved error extraction from Axios response
       const serverError = error.response?.data?.error || error.message;
       setErrorMessage(serverError || "Something went wrong. Please try again.");
+      turnstileRef.current?.reset();
     }
   };
 
@@ -235,6 +251,16 @@ export default function ContactPage() {
                          {errorMessage}
                       </div>
                     )}
+
+                    {/* Cloudflare Turnstile - Invisible CAPTCHA */}
+                    <Turnstile
+                      ref={turnstileRef}
+                      siteKey={TURNSTILE_SITE_KEY}
+                      onSuccess={(token) => setTurnstileToken(token)}
+                      onError={() => setTurnstileToken(null)}
+                      onExpire={() => setTurnstileToken(null)}
+                      options={{ theme: "dark", size: "invisible" }}
+                    />
 
                     <Button 
                       disabled={status === "loading"}

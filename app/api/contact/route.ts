@@ -11,18 +11,19 @@ const ContactSchema = z.object({
   contactNumber: z.string().min(1, "Contact number is required"),
   subject: z.string().optional(),
   message: z.string().min(1, "Message is required"),
+  turnstileToken: z.string().min(1, "Security verification required"),
 });
 
 export async function POST(request: Request) {
   try {
-    console.log("API Key Present?", !!process.env.RESEND_API_KEY);
     if (!process.env.RESEND_API_KEY) {
         console.error("CRITICAL: RESEND_API_KEY is not set!");
         return NextResponse.json({ error: "Server configuration error: Email service not configured." }, { status: 500 });
     }
+    
     const body = await request.json();
     
-    // safeParse returns a result object with .success and .data/.error
+    // Validate form data
     const result = ContactSchema.safeParse(body);
 
     if (!result.success) {
@@ -32,7 +33,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const { firstName, lastName, email, contactNumber, subject, message } = result.data;
+    const { firstName, lastName, email, contactNumber, subject, message, turnstileToken } = result.data;
+    
+    // Verify Turnstile token with Cloudflare
+    const turnstileResponse = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: process.env.TURNSTILE_SECRET_KEY,
+        response: turnstileToken,
+      }),
+    });
+    
+    const turnstileResult = await turnstileResponse.json();
+    
+    if (!turnstileResult.success) {
+      console.error("Turnstile verification failed:", turnstileResult);
+      return NextResponse.json({ error: "Security verification failed. Please try again." }, { status: 403 });
+    }
+
     const fullName = `${firstName} ${lastName || ''}`.trim();
     const finalSubject = subject || "New Contact Form Submission";
     const senderEmail = "no-reply@doloreshotels.com"; 

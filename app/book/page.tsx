@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { CreditCard, Lock, Check, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { addDays, differenceInDays, parseISO, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/booking/DateRangePicker";
@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown } from "lucide-react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 function BookingForm() {
    const router = useRouter();
@@ -47,10 +50,19 @@ function BookingForm() {
    const room = property?.rooms.find(r => r.id === roomId);
 
    const [isLoading, setIsLoading] = useState(false);
+   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+   const [turnstileError, setTurnstileError] = useState("");
+   const turnstileRef = useRef<TurnstileInstance>(null);
 
    const handleBooking = (e: React.FormEvent) => {
       e.preventDefault();
       if (!property || !room) return;
+
+      if (!turnstileToken) {
+         setTurnstileError("Please complete the security verification.");
+         return;
+      }
+      setTurnstileError("");
 
       setIsLoading(true);
       
@@ -262,6 +274,24 @@ function BookingForm() {
                     ))}
                 </div>
              </div>
+
+             {/* Turnstile Error Message */}
+             {turnstileError && (
+               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20 mb-4">
+                  <X className="h-4 w-4" />
+                  {turnstileError}
+               </div>
+             )}
+
+             {/* Cloudflare Turnstile - Invisible CAPTCHA */}
+             <Turnstile
+               ref={turnstileRef}
+               siteKey={TURNSTILE_SITE_KEY}
+               onSuccess={(token) => setTurnstileToken(token)}
+               onError={() => setTurnstileToken(null)}
+               onExpire={() => setTurnstileToken(null)}
+               options={{ theme: "dark", size: "invisible" }}
+             />
              
              <Button 
                type="submit" 
