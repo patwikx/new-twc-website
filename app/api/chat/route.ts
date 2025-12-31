@@ -7,9 +7,43 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
+// Rate Limiting Logic (Simple In-Memory)
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS = 10; // 10 requests per minute
+const requestCounts = new Map<string, { count: number, resetTime: number }>();
+
+function isRateLimited(ip: string) {
+  const now = Date.now();
+  const record = requestCounts.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    requestCounts.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return false;
+  }
+  
+  if (record.count >= MAX_REQUESTS) return true;
+  
+  record.count++;
+  return false;
+}
+
 export async function POST(req: Request) {
   try {
     const { message, propertyName } = await req.json();
+
+    // 1. Rate Limiting Check
+    const ip = req.headers.get("x-forwarded-for") || "unknown";
+    if (isRateLimited(ip)) {
+      return NextResponse.json({ reply: "You're sending messages too quickly. Please wait a minute." }, { status: 429 });
+    }
+
+    // 2. Input Validation
+    if (!message || typeof message !== 'string') {
+        return NextResponse.json({ reply: "Invalid message format." }, { status: 400 });
+    }
+    if (message.length > 500) {
+        return NextResponse.json({ reply: "Please keep your message under 500 characters." }, { status: 400 });
+    }
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({ reply: "Configuration Error: Gemini API Key is missing." }, { status: 500 });
