@@ -43,11 +43,11 @@ export async function POST(request: Request) {
     const textColor = "#ffffff";
     const mutedColor = "#a3a3a3"; // Neutral-400
     const cardBg = "#171717"; // Neutral-900
-    
+
     // Send Admin Notification
     const adminEmail = await resend.emails.send({
       from: `Tropicana <${senderEmail}>`,
-      to: ['marketinginfo@doloreshotels.com.ph'],
+      to: ['plmiranda@rdrealty.com.ph'],
       replyTo: email,
       subject: `[New Inquiry] ${finalSubject} - ${fullName}`,
       html: `
