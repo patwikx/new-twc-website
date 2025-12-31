@@ -4,19 +4,30 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCartStore } from "@/store/useCartStore";
 
 const navLinks = [
   { name: "Hotels & Resorts", href: "/properties" },
   { name: "Dining", href: "/dining" },
   { name: "Events", href: "/events" },
+  { name: "Experiences", href: "/experiences" },
   { name: "Contact Us", href: "/contact" },
 ];
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  
+  // Hydration safety for persisted store
+  const [mounted, setMounted] = useState(false);
+  const itemCount = useCartStore((state) => state.items.length);
+
+  useEffect(() => {
+    useCartStore.persist.rehydrate();
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -70,7 +81,7 @@ export function Navbar() {
             </Link>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-12">
+            <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
                 <Link
                   key={link.name}
@@ -81,6 +92,17 @@ export function Navbar() {
                   <span className="absolute -bottom-2 left-0 w-0 h-[1px] bg-white transition-all duration-300 group-hover:w-full" />
                 </Link>
               ))}
+              
+              {/* Cart Icon */}
+              <Link href="/cart" className="relative p-2 text-white/80 hover:text-white transition-colors">
+                <ShoppingCart className="h-5 w-5" />
+                {itemCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-black text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                    {itemCount}
+                  </span>
+                )}
+              </Link>
+              
               <Link href="/properties">
                 <Button 
                   variant="outline" 

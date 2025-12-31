@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PROPERTIES, TAX_RATE, SERVICE_CHARGE_RATE, COUPONS, POLICIES } from "@/lib/mock-data";
+import { CartItem } from "@/store/useCartStore";
 import { motion } from "framer-motion";
 import { CreditCard, Lock, Check, X } from "lucide-react";
 import Image from "next/image";
@@ -38,14 +39,33 @@ function BookingForm() {
    const roomId = searchParams.get("room");
    const checkInParam = searchParams.get("checkIn");
    const checkOutParam = searchParams.get("checkOut");
+   const cartParam = searchParams.get("cart");
 
-   // Initialize dates
+   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+   const [isCartMode, setIsCartMode] = useState(false);
+
+   useEffect(() => {
+      if (cartParam) {
+         try {
+            const decoded = JSON.parse(decodeURIComponent(cartParam));
+            setCartItems(decoded.map((item: any) => ({
+               ...item,
+               checkIn: new Date(item.checkIn),
+               checkOut: new Date(item.checkOut)
+            })));
+            setIsCartMode(true);
+         } catch (e) {
+            console.error("Failed to parse cart", e);
+         }
+      }
+   }, [cartParam]);
+
+   // Single Room State
    const [date, setDate] = useState<DateRange | undefined>({
       from: checkInParam ? parseISO(checkInParam) : new Date(),
       to: checkOutParam ? parseISO(checkOutParam) : addDays(new Date(), 1),
    });
 
-   // Simple mock lookup
    const property = PROPERTIES.find(p => p.slug === propertySlug);
    const room = property?.rooms.find(r => r.id === roomId);
 
@@ -54,72 +74,6 @@ function BookingForm() {
    const [turnstileError, setTurnstileError] = useState("");
    const turnstileRef = useRef<TurnstileInstance>(null);
 
-   const handleBooking = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!property || !room) return;
-
-      if (!turnstileToken) {
-         setTurnstileError("Please complete the security verification.");
-         return;
-      }
-      setTurnstileError("");
-
-      setIsLoading(true);
-      
-      // Simulate API call
-      setTimeout(() => {
-         const ref = Math.random().toString(36).substring(7).toUpperCase();
-         const params = new URLSearchParams();
-         params.set('ref', ref);
-         if (date?.from) params.set('checkIn', date.from.toISOString());
-         if (date?.to) params.set('checkOut', date.to.toISOString());
-         
-         // Financials
-         params.set('roomTotal', roomTotal.toString());
-         params.set('discount', discountAmount.toString());
-         params.set('tax', taxes.toString());
-         params.set('serviceCharge', serviceCharge.toString());
-         params.set('total', total.toString());
-         
-         // Details
-         params.set('roomName', room.name);
-         params.set('propertyName', property.name);
-         params.set('guests', guestCount.toString());
-         
-         // Guest Info
-         params.set('firstName', guestDetails.firstName);
-         params.set('lastName', guestDetails.lastName);
-         params.set('email', guestDetails.email);
-         params.set('phone', guestDetails.phone);
-         
-         router.push(`/book/confirmation?${params.toString()}`);
-      }, 2000);
-   };
-
-   if (!property || !room) {
-      return (
-         <div className="text-center py-24">
-            <h1 className="text-3xl font-serif">Details not found</h1>
-            <p className="text-muted-foreground mt-4">Please select a room to start your booking.</p>
-            <Button onClick={() => router.push("/properties")} className="mt-8 rounded-none uppercase tracking-widest text-xs">
-               Browse Properties
-            </Button>
-         </div>
-      );
-   }
-
-   const EXTRAS = [
-      { id: 'airport-pickup', label: 'Airport Pickup (One Way)', price: 1500 },
-      { id: 'breakfast', label: 'Daily Breakfast Buffet', price: 850 },
-      { id: 'extra-bed', label: 'Extra Bed', price: 1200 },
-      { id: 'romantic-setup', label: 'Romantic Room Setup', price: 2500 },
-   ];
-
-   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
-   const [couponCode, setCouponCode] = useState("");
-   const [appliedCoupon, setAppliedCoupon] = useState<{code: string, amount: number} | null>(null);
-   const [couponError, setCouponError] = useState("");
-   const [guestCount, setGuestCount] = useState(room?.capacity || 2);
    const [guestDetails, setGuestDetails] = useState({
       firstName: "",
       lastName: "",
@@ -128,40 +82,38 @@ function BookingForm() {
       specialRequests: ""
    });
 
-   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const { name, value } = e.target;
-      setGuestDetails(prev => ({ ...prev, [name]: value }));
-   };
+   // Extras & Coupons (Global)
+   const EXTRAS = [
+      { id: 'airport-pickup', label: 'Airport Pickup (One Way)', price: 1500 },
+      { id: 'breakfast', label: 'Daily Breakfast Buffet', price: 850 },
+      { id: 'extra-bed', label: 'Extra Bed', price: 1200 },
+      { id: 'romantic-setup', label: 'Romantic Room Setup', price: 2500 },
+   ];
+   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
+   const [couponCode, setCouponCode] = useState("");
+   const [appliedCoupon, setAppliedCoupon] = useState<{code: string, amount: number} | null>(null);
+   const [couponError, setCouponError] = useState("");
 
-   const toggleExtra = (id: string) => {
-      setSelectedExtras(prev => 
-         prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-      );
-   };
+   // Single Room Guest Count
+   const [singleGuestCount, setSingleGuestCount] = useState(room?.capacity || 2);
 
-   const handleApplyCoupon = () => {
-      const coupon = COUPONS.find(c => c.code === couponCode.toUpperCase());
-      if (coupon) {
-         setAppliedCoupon({ code: coupon.code, amount: 0 }); // Amount calced in render
-         setCouponError("");
-      } else {
-         setCouponError("Invalid coupon code");
-         setAppliedCoupon(null);
-      }
-   };
+   // Calculations
+   const cartSubtotal = cartItems.reduce((acc, item) => {
+      const nights = Math.max(1, differenceInDays(item.checkOut, item.checkIn));
+      // Need to find price. Item usually has it, but let's look up to be safe or use item if available.
+      // Assuming item has price (it does in store)
+      const roomPrice = PROPERTIES.find(p => p.slug === item.propertySlug)?.rooms.find(r => r.id === item.roomId)?.price || 0;
+      return acc + (roomPrice * nights);
+   }, 0);
 
-   const handleRemoveCoupon = () => {
-      setAppliedCoupon(null);
-      setCouponCode("");
-      setCouponError("");
-   };
+   const singleNights = date?.from && date?.to ? Math.max(1, differenceInDays(date.to, date.from)) : 1;
+   const singleRoomTotal = (room?.price || 0) * singleNights;
 
-   const nights = date?.from && date?.to ? Math.max(1, differenceInDays(date.to, date.from)) : 1;
+   const roomSubtotal = isCartMode ? cartSubtotal : singleRoomTotal;
    const extrasTotal = selectedExtras.reduce((sum, id) => sum + (EXTRAS.find(e => e.id === id)?.price || 0), 0);
-   const roomTotal = room.price * nights;
-   const subtotal = roomTotal + extrasTotal;
+   const subtotal = roomSubtotal + extrasTotal;
 
-   // Calculate discount
+   // Discount
    let discountAmount = 0;
    if (appliedCoupon) {
        const coupon = COUPONS.find(c => c.code === appliedCoupon.code);
@@ -178,6 +130,69 @@ function BookingForm() {
    const serviceCharge = discountedSubtotal * SERVICE_CHARGE_RATE;
    const taxes = discountedSubtotal * TAX_RATE;
    const total = discountedSubtotal + taxes + serviceCharge;
+
+   const handleBooking = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!isCartMode && (!property || !room)) return;
+
+      if (!turnstileToken) {
+         setTurnstileError("Please complete the security verification.");
+         return;
+      }
+      setTurnstileError("");
+      setIsLoading(true);
+      
+      setTimeout(() => {
+         const ref = Math.random().toString(36).substring(7).toUpperCase();
+         const params = new URLSearchParams();
+         params.set('ref', ref);
+         params.set('total', total.toString());
+         params.set('firstName', guestDetails.firstName);
+         params.set('lastName', guestDetails.lastName);
+         
+         router.push(`/book/confirmation?${params.toString()}`);
+      }, 2000);
+   };
+
+   if (!isCartMode && (!property || !room)) {
+      return (
+         <div className="text-center py-24">
+            <h1 className="text-3xl font-serif">Details not found</h1>
+            <p className="text-muted-foreground mt-4">Please select a room to start your booking.</p>
+            <Button onClick={() => router.push("/properties")} className="mt-8 rounded-none uppercase tracking-widest text-xs">
+               Browse Properties
+            </Button>
+         </div>
+      );
+   }
+
+   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { name, value } = e.target;
+      setGuestDetails(prev => ({ ...prev, [name]: value }));
+   };
+
+   const toggleExtra = (id: string) => {
+      setSelectedExtras(prev => 
+         prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+      );
+   };
+
+   const handleApplyCoupon = () => {
+      const coupon = COUPONS.find(c => c.code === couponCode.toUpperCase());
+      if (coupon) {
+         setAppliedCoupon({ code: coupon.code, amount: 0 });
+         setCouponError("");
+      } else {
+         setCouponError("Invalid coupon code");
+         setAppliedCoupon(null);
+      }
+   };
+
+   const handleRemoveCoupon = () => {
+      setAppliedCoupon(null);
+      setCouponCode("");
+      setCouponError("");
+   };
 
    return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -283,7 +298,7 @@ function BookingForm() {
                </div>
              )}
 
-             {/* Cloudflare Turnstile - Invisible CAPTCHA */}
+             {/* Cloudflare Turnstile */}
              <Turnstile
                ref={turnstileRef}
                siteKey={TURNSTILE_SITE_KEY}
@@ -296,11 +311,10 @@ function BookingForm() {
              <Button 
                type="submit" 
                form="booking-form"
-               disabled={true} // Temporarily disabled {isLoading}
-               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-neutral-800 text-neutral-500 cursor-not-allowed" // Modified styling for disabled state
+               disabled={true} 
+               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-neutral-800 text-neutral-500 cursor-not-allowed" 
              >
                Payment Disabled (Coming Soon)
-               {/* Original: {isLoading ? "Redirecting..." : `Proceed to Payment (₱${total.toLocaleString()})`} */}
              </Button>
              <p className="text-xs text-center text-neutral-500">By clicking "Pay", you agree to our Terms of Service.</p>
          </div>
@@ -310,90 +324,121 @@ function BookingForm() {
             <div className="bg-white/5 border border-white/10 p-8 sticky top-32">
                <h3 className="text-xl font-serif italic mb-6">Your Stay</h3>
                
-               <div className="aspect-video relative rounded-none overflow-hidden mb-6">
-                  <Image src={room.image || property.image} alt={room.name} fill className="object-cover" />
+               {isCartMode ? (
+                 <div className="space-y-6 mb-6">
+                   {cartItems.map((item, idx) => {
+                     // Find details again safe
+                     const p = PROPERTIES.find(p => p.slug === item.propertySlug);
+                     const r = p?.rooms.find(r => r.id === item.roomId);
+                     if (!p || !r) return null;
+                     
+                     const itemNights = Math.max(1, differenceInDays(item.checkOut, item.checkIn));
+                     return (
+                       <div key={idx} className="flex gap-4 border-b border-white/10 pb-4 last:border-0 last:pb-0">
+                         <div className="h-16 w-16 relative bg-neutral-800 shrink-0">
+                           <Image src={r.image || p.image} alt={r.name} fill className="object-cover" />
+                         </div>
+                         <div className="flex-1">
+                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">{p.name}</p>
+                           <p className="font-medium text-sm">{r.name}</p>
+                           <div className="flex justify-between mt-1 text-xs text-neutral-400">
+                             <span>{format(item.checkIn, "MMM d")} - {format(item.checkOut, "MMM d")}</span>
+                             <span>{item.guests} Guests</span>
+                           </div>
+                           <p className="text-right text-sm font-medium mt-1">₱{(r.price * itemNights).toLocaleString()}</p>
+                         </div>
+                       </div>
+                     );
+                   })}
+                 </div>
+               ) : (
+                 <>
+                   <div className="aspect-video relative rounded-none overflow-hidden mb-6">
+                      <Image src={room?.image || property?.image || ""} alt={room?.name || ""} fill className="object-cover" />
+                   </div>
+
+                   <div className="space-y-4 border-b border-white/10 pb-6 mb-6">
+                      <div>
+                         <p className="text-xs uppercase tracking-widest text-neutral-500">Property</p>
+                         <p className="font-medium text-lg">{property?.name}</p>
+                      </div>
+                      <div>
+                         <p className="text-xs uppercase tracking-widest text-neutral-500">Room</p>
+                         <p className="font-medium">{room?.name}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
+                               Dates <span className="text-orange-500/70 normal-case text-[10px]">(Click to change)</span>
+                            </p>
+                            <DateRangePicker 
+                               date={date} 
+                               setDate={setDate}
+                               className="text-sm border-white/20"
+                            />
+                         </div>
+                         <div>
+                            <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
+                               Guests <span className="text-orange-500/70 normal-case text-[10px]">(Max {room?.capacity})</span>
+                            </p>
+                            <select 
+                               value={singleGuestCount}
+                               onChange={(e) => setSingleGuestCount(Number(e.target.value))}
+                               className="w-full bg-neutral-950 border border-white/10 text-white h-10 px-3 text-sm rounded-none focus:border-orange-500/50 focus:ring-0 cursor-pointer"
+                            >
+                               {Array.from({ length: room?.capacity || 2 }, (_, i) => i + 1).map((num) => (
+                                  <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
+                               ))}
+                            </select>
+                         </div>
+                      </div>
+                   </div>
+                 </>
+               )}
+
+               <div className="pt-4 border-t border-white/10">
+                   <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">Promo Code</p>
+                   {appliedCoupon ? (
+                       <div className="flex justify-between items-center bg-white/5 p-3 border border-white/10">
+                           <div className="flex items-center gap-2">
+                               <Check className="h-4 w-4 text-green-500" />
+                               <span className="text-sm font-medium">{appliedCoupon.code}</span>
+                           </div>
+                           <Button 
+                               variant="ghost" 
+                               size="sm"
+                               onClick={handleRemoveCoupon} 
+                               className="h-auto p-0 text-neutral-400 hover:text-white hover:bg-transparent"
+                           >
+                               <X className="h-4 w-4" /> 
+                           </Button>
+                       </div>
+                   ) : (
+                       <div className="space-y-2">
+                           <div className="flex gap-2">
+                               <Input 
+                                   value={couponCode}
+                                   onChange={(e) => setCouponCode(e.target.value)}
+                                   placeholder="Enter code"
+                                   className="bg-neutral-950 border-white/10 text-white h-10 text-xs rounded-none focus:border-orange-500/50"
+                               />
+                               <Button 
+                                   onClick={handleApplyCoupon}
+                                   disabled={!couponCode}
+                                   className="h-10 px-4 bg-white text-black text-xs uppercase tracking-widest rounded-none hover:bg-neutral-200"
+                               >
+                                   Apply
+                               </Button>
+                           </div>
+                           {couponError && <p className="text-red-500 text-[10px]">{couponError}</p>}
+                       </div>
+                   )}
                </div>
 
-               <div className="space-y-4 border-b border-white/10 pb-6 mb-6">
-                  <div>
-                     <p className="text-xs uppercase tracking-widest text-neutral-500">Property</p>
-                     <p className="font-medium text-lg">{property.name}</p>
-                  </div>
-                  <div>
-                     <p className="text-xs uppercase tracking-widest text-neutral-500">Room</p>
-                     <p className="font-medium">{room.name}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div>
-                        <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
-                           Dates <span className="text-orange-500/70 normal-case text-[10px]">(Click to change)</span>
-                        </p>
-                        <DateRangePicker 
-                           date={date} 
-                           setDate={setDate}
-                           className="text-sm border-white/20"
-                        />
-                     </div>
-                     <div>
-                        <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
-                           Guests <span className="text-orange-500/70 normal-case text-[10px]">(Max {room.capacity})</span>
-                        </p>
-                        <select 
-                           value={guestCount}
-                           onChange={(e) => setGuestCount(Number(e.target.value))}
-                           className="w-full bg-neutral-950 border border-white/10 text-white h-10 px-3 text-sm rounded-none focus:border-orange-500/50 focus:ring-0 cursor-pointer"
-                        >
-                           {Array.from({ length: room.capacity }, (_, i) => i + 1).map((num) => (
-                              <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
-                           ))}
-                        </select>
-                     </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-white/10">
-                      <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">Promo Code</p>
-                      {appliedCoupon ? (
-                          <div className="flex justify-between items-center bg-white/5 p-3 border border-white/10">
-                              <div className="flex items-center gap-2">
-                                  <Check className="h-4 w-4 text-green-500" />
-                                  <span className="text-sm font-medium">{appliedCoupon.code}</span>
-                              </div>
-                              <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={handleRemoveCoupon} 
-                                  className="h-auto p-0 text-neutral-400 hover:text-white hover:bg-transparent"
-                              >
-                                  <X className="h-4 w-4" /> 
-                              </Button>
-                          </div>
-                      ) : (
-                          <div className="space-y-2">
-                              <div className="flex gap-2">
-                                  <Input 
-                                      value={couponCode}
-                                      onChange={(e) => setCouponCode(e.target.value)}
-                                      placeholder="Enter code"
-                                      className="bg-neutral-950 border-white/10 text-white h-10 text-xs rounded-none focus:border-orange-500/50"
-                                  />
-                                  <Button 
-                                      onClick={handleApplyCoupon}
-                                      disabled={!couponCode}
-                                      className="h-10 px-4 bg-white text-black text-xs uppercase tracking-widest rounded-none hover:bg-neutral-200"
-                                  >
-                                      Apply
-                                  </Button>
-                              </div>
-                              {couponError && <p className="text-red-500 text-[10px]">{couponError}</p>}
-                          </div>
-                      )}
-                  </div>
-               </div>
-
-               <div className="space-y-2 text-sm">
+               <div className="space-y-2 text-sm mt-6">
                   <div className="flex justify-between">
-                     <span className="text-neutral-400">Room Rate x {nights} Night{nights > 1 ? 's' : ''}</span>
-                     <span>₱{roomTotal.toLocaleString()}</span>
+                     <span className="text-neutral-400">{isCartMode ? 'Full Stay Total' : `Room Rate x ${singleNights} Night${singleNights > 1 ? 's' : ''}`}</span>
+                     <span>₱{roomSubtotal.toLocaleString()}</span>
                   </div>
                   {appliedCoupon && (
                      <div className="flex justify-between text-green-500">

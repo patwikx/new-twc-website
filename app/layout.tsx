@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { GlobalChatWidget } from "@/components/chat/GlobalChatWidget";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -36,6 +37,7 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
+        <GlobalChatWidget />
       </body>
     </html>
   );
