@@ -30,9 +30,7 @@ export async function POST(request: Request) {
     const { email } = result.data;
     const senderEmail = "no-reply@doloreshotels.com"; 
 
-    // Send Admin Notification (Text Only for Reliability)
-    console.log(`[DEBUG] API Key Length: ${process.env.RESEND_API_KEY?.length}`);
-    console.log(`[DEBUG] Sending to admin for: ${email}`);
+    // Send Admin Notification
     
     const adminEmail = await resend.emails.send({
       from: `Tropicana <${senderEmail}>`,
@@ -72,11 +70,8 @@ export async function POST(request: Request) {
       console.error("FAILED:", JSON.stringify(adminEmail.error));
       return NextResponse.json({ error: "Failed: " + adminEmail.error.message }, { status: 500 });
     }
-    
-    console.log("[DEBUG] Admin email sent OK");
 
     // Send Guest Welcome Email
-    console.log(`[DEBUG] Sending Guest Welcome Email to ${email}`);
     const guestEmail = await resend.emails.send({
       from: `Tropicana Worldwide Corp. <${senderEmail}>`,
       to: [email],
@@ -116,9 +111,6 @@ export async function POST(request: Request) {
 
     if (guestEmail.error) {
         console.error("Guest Welcome Email Error:", guestEmail.error);
-        // We log but allow success for the user flow
-    } else {
-        console.log("Guest Welcome Email Sent Successfully");
     }
 
     return NextResponse.json({ success: true, message: "Subscribed successfully" });
