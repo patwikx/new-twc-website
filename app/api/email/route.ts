@@ -117,6 +117,70 @@ const processEmailRequest = async (body: any, apiKey: string) => {
         </body>
       </html>
     `;
+  } else if (type === "booking-confirmation") {
+    const { ref, propertyName, checkIn, checkOut, amount, guestName } = body;
+    const domain = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const confirmationLink = `${domain}/book/confirmation?ref=${ref}`;
+    
+    subject = `Booking Confirmed: ${ref} - Tropicana`;
+    html = `
+      <!DOCTYPE html>
+      <html>
+        <body style="margin: 0; padding: 0; background-color: #0a0a0a; font-family: 'Times New Roman', serif;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #171717; color: #ffffff;">
+            <div style="padding: 40px 40px; text-align: center; border-bottom: 1px solid #333;">
+               <h1 style="margin: 0; color: #ffffff; font-size: 28px; text-transform: uppercase; letter-spacing: 3px; font-weight: 400;">Tropicana</h1>
+               <p style="margin: 5px 0 0; color: ${primaryColor}; font-size: 10px; letter-spacing: 4px; text-transform: uppercase;">Worldwide Corp.</p>
+            </div>
+            <div style="padding: 40px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <p style="color: ${primaryColor}; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Payment Successful</p>
+                <h2 style="color: #ffffff; font-size: 32px; font-weight: 300; margin: 0; line-height: 1.2;">You're Booked!</h2>
+              </div>
+              
+              <p style="color: #d4d4d4; font-family: sans-serif; font-size: 16px; line-height: 1.8; margin-bottom: 30px; text-align: center;">
+                Dear ${guestName || "Guest"},<br>
+                Your reservation at <strong>${propertyName}</strong> is confirmed. We are honored to host you.
+              </p>
+
+              <div style="background-color: #222; padding: 30px; margin-bottom: 30px; border-left: 2px solid ${primaryColor};">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding-bottom: 15px; color: ${mutedColor}; font-family: sans-serif; font-size: 12px; text-transform: uppercase;">Reference</td>
+                    <td style="padding-bottom: 15px; color: #ffffff; font-family: monospace; font-size: 16px; text-align: right;">${ref}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-bottom: 15px; color: ${mutedColor}; font-family: sans-serif; font-size: 12px; text-transform: uppercase;">Check In</td>
+                    <td style="padding-bottom: 15px; color: #ffffff; font-family: sans-serif; font-size: 14px; text-align: right;">${checkIn}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-bottom: 15px; color: ${mutedColor}; font-family: sans-serif; font-size: 12px; text-transform: uppercase;">Check Out</td>
+                    <td style="padding-bottom: 15px; color: #ffffff; font-family: sans-serif; font-size: 14px; text-align: right;">${checkOut}</td>
+                  </tr>
+                  <tr>
+                    <td style="border-top: 1px solid #333; padding-top: 15px; color: ${mutedColor}; font-family: sans-serif; font-size: 12px; text-transform: uppercase;">Total Paid</td>
+                    <td style="border-top: 1px solid #333; padding-top: 15px; color: ${primaryColor}; font-family: sans-serif; font-size: 18px; text-align: right;">${amount}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div style="text-align: center; margin-top: 30px;">
+                <a href="${confirmationLink}" style="display: inline-block; padding: 15px 30px; background-color: #ffffff; color: #000000; text-decoration: none; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">View Booking Receipt</a>
+              </div>
+            </div>
+            <div style="background-color: #0a0a0a; padding: 30px 40px; text-align: center; border-top: 1px solid #333;">
+               <p style="margin: 0 0 10px; color: ${mutedColor}; font-family: sans-serif; font-size: 14px;">
+                 Present this email or your booking reference upon arrival.
+               </p>
+               <p style="margin: 0; color: #525252; font-family: sans-serif; font-size: 12px;">
+                &copy; ${new Date().getFullYear()} Tropicana Worldwide Corp.<br>
+                General Santos City, Philippines
+              </p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
   } else {
     throw new Error("Invalid email type");
   }

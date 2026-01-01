@@ -1,10 +1,9 @@
-// /app/api/webhooks/paymongo/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
+import { sendBookingConfirmationEmail } from '@/lib/mail';
 import { 
   WebhookEvent, 
   CheckoutSessionWebhookData, 
@@ -217,7 +216,8 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
       where: { id: bookingId },
       include: { 
         room: true,
-        property: true
+        property: true,
+        items: true
       }
     });
 
@@ -330,6 +330,34 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
     });
     
     console.log(`✅ Payment confirmed for booking ${booking.shortRef}`);
+
+    // Send confirmation email to guest
+    if (amountDue <= 0) {
+      try {
+        const firstItem = booking.items[0];
+        const checkIn = firstItem ? new Date(firstItem.checkIn).toLocaleDateString('en-US', { 
+          weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+        }) : 'N/A';
+        const checkOut = firstItem ? new Date(firstItem.checkOut).toLocaleDateString('en-US', { 
+          weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+        }) : 'N/A';
+        
+        await sendBookingConfirmationEmail({
+          email: booking.guestEmail,
+          ref: booking.shortRef,
+          propertyName: booking.property?.name || 'Tropicana Hotel',
+          checkIn,
+          checkOut,
+          amount: `PHP ${Number(booking.totalAmount).toLocaleString()}`,
+          guestName: `${booking.guestFirstName} ${booking.guestLastName}`
+        });
+        
+        console.log(`📧 Confirmation email sent to ${booking.guestEmail}`);
+      } catch (emailError) {
+        // Log but don't fail the webhook if email fails
+        console.error('Failed to send confirmation email:', emailError);
+      }
+    }
     
   } catch (error) {
     console.error('Error in handleCheckoutSessionSuccess:', error);
