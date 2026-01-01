@@ -4,6 +4,7 @@ import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { addDays } from "date-fns";
 import { PROPERTIES } from "@/lib/mock-data";
+import { useCartStore } from "@/store/useCartStore";
 import { DateRangePicker } from "./DateRangePicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,8 +41,25 @@ export function BookingWidget() {
     }, 1500);
   };
 
+  const [flyingParticle, setFlyingParticle] = useState<{ x: number; y: number } | null>(null);
+
   return (
-    <div className="w-full max-w-[95%] 2xl:max-w-[1800px] mx-auto p-4 md:px-12">
+    <div className="w-full max-w-[95%] 2xl:max-w-[1800px] mx-auto p-4 md:px-12 relative">
+      <AnimatePresence>
+        {flyingParticle && (
+          <motion.div
+            initial={{ x: flyingParticle.x, y: flyingParticle.y, scale: 1, opacity: 1 }}
+            animate={{ 
+              x: window.innerWidth - 100, // Approximate top-right navbar position
+              y: 40,
+              scale: 0.2, 
+              opacity: 0 
+            }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            className="fixed z-[99999] w-4 h-4 rounded-full bg-orange-500 pointer-events-none shadow-[0_0_20px_rgba(249,115,22,0.8)]"
+          />
+        )}
+      </AnimatePresence>
       {/* Sleek Minimalist Container - Solid & Compact */}
       <div className="bg-neutral-900 border border-white/10 p-0 shadow-2xl flex flex-col xl:flex-row items-stretch relative overflow-visible group rounded-none">
         
@@ -138,24 +156,62 @@ export function BookingWidget() {
                  if (!propertySlug) return null;
 
                  return (
-                  <Link 
-                     href={`/properties/${propertySlug}/rooms/${room.id}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
-                     key={room.id}
-                  >
-                    <div className="group relative rounded-none overflow-hidden cursor-pointer h-full">
-                       <div className="aspect-[4/3]">
-                          <img src={room.image} alt={room.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                       </div>
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-6 flex flex-col justify-end">
-                          <h4 className="font-serif text-2xl text-white mb-2">{room.name}</h4>
-                          <div className="flex justify-between items-end">
-                              <span className="text-white/90 font-light">₱{room.price.toLocaleString()} <span className="text-xs opacity-70">/ night</span></span>
-                              <Button size="sm" className="rounded-none bg-white text-black hover:bg-neutral-200 uppercase tracking-widest text-[10px] h-8 px-4 font-bold">Details</Button>
-                          </div>
-                       </div>
-                    </div>
-                  </Link>
-                 );
+                     <div key={room.id} className="relative group/card h-full">
+                    <Link 
+                       href={`/properties/${propertySlug}/rooms/${room.id}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
+                       className="block h-full"
+                    >
+                     <div className="group relative rounded-none overflow-hidden cursor-pointer h-full">
+                        <div className="aspect-[4/3]">
+                           <img src={room.image} alt={room.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-6 flex flex-col justify-end">
+                           <h4 className="font-serif text-2xl text-white mb-2">{room.name}</h4>
+                           <div className="flex justify-between items-end gap-2">
+                               <span className="text-white/90 font-light">₱{room.price.toLocaleString()} <span className="text-xs opacity-70">/ night</span></span>
+                               <div className="flex gap-2">
+                                  <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white hover:text-black rounded-none uppercase tracking-widest text-[10px] h-8 px-4 font-bold">
+                                    Details
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    className="rounded-none bg-white text-black hover:bg-neutral-200 uppercase tracking-widest text-[10px] h-8 px-4 font-bold"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+
+                                      // Create flyer
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setFlyingParticle({
+                                        x: rect.left + rect.width / 2,
+                                        y: rect.top + rect.height / 2,
+                                      });
+
+                                      // Add to cart
+                                      useCartStore.getState().addToCart({
+                                        propertySlug: propertySlug,
+                                        roomId: room.id,
+                                        checkIn: date?.from || new Date(),
+                                        checkOut: date?.to || addDays(new Date(), 1),
+                                        guests: parseInt(guests),
+                                      });
+
+                                      // Open drawer slightly after animation starts
+                                      setTimeout(() => {
+                                        useCartStore.getState().setDrawerOpen(true);
+                                        setFlyingParticle(null);
+                                      }, 800);
+                                    }}
+                                  >
+                                    Select
+                                  </Button>
+                               </div>
+                           </div>
+                        </div>
+                     </div>
+                   </Link>
+                   </div>
+                  );
               })}
             </div>
           </motion.div>

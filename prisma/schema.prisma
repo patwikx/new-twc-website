@@ -1,0 +1,384 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// 1. Auth & Users (NextAuth.js v5 Adapter)
+// -----------------------------------------------------------------------------
+
+model User {
+    id            String    @id @default(uuid())
+    name          String?
+    email         String?   @unique
+    emailVerified DateTime?
+    image         String?
+    password      String?
+    role          UserRole  @default(GUEST)
+
+    // Extended Profile
+    phone       String?
+    dateOfBirth DateTime?
+    nationality String?
+    address     String?   @db.Text
+
+    accounts  Account[]
+    sessions  Session[]
+    bookings  Booking[]
+    reviews   Review[]
+    analytics AnalyticsEvent[]
+
+    // Membership & Preferences
+    membership  Membership?
+    preferences UserPreferences?
+
+    isTwoFactorEnabled    Boolean                @default(false)
+    twoFactorConfirmation TwoFactorConfirmation?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+    GUEST
+    ADMIN
+    STAFF
+}
+
+model Account {
+    id                String  @id @default(uuid())
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String? @db.Text
+    access_token      String? @db.Text
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String? @db.Text
+    session_state     String?
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+}
+
+model Session {
+    id           String   @id @default(uuid())
+    sessionToken String   @unique
+    userId       String
+    expires      DateTime
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+    identifier String
+    token      String   @unique
+    expires    DateTime
+
+    @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+    id      String   @id @default(uuid())
+    email   String
+    token   String   @unique
+    expires DateTime
+
+    @@unique([email, token])
+}
+
+model TwoFactorToken {
+    id      String   @id @default(uuid())
+    email   String
+    token   String   @unique
+    expires DateTime
+
+    @@unique([email, token])
+}
+
+model TwoFactorConfirmation {
+    id String @id @default(uuid())
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([userId])
+}
+
+// Membership & Loyalty
+model Membership {
+    id     String @id @default(uuid())
+    userId String @unique
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    tier   MembershipTier @default(STANDARD)
+    points Int            @default(0)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+enum MembershipTier {
+    STANDARD // New users, no perks
+    SILVER // 1,000+ points
+    GOLD // 5,000+ points
+    PLATINUM // 10,000+ points
+}
+
+// User Stay Preferences
+model UserPreferences {
+    id     String @id @default(uuid())
+    userId String @unique
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    roomTemperature     String? // cool, standard, warm
+    pillowType          String? // feather, foam, hypo, firm
+    dietaryRestrictions String? @db.Text
+    turndownService     Boolean @default(false)
+    newspaper           Boolean @default(false)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+// Newsletter Subscriptions
+model NewsletterSubscriber {
+    id       String  @id @default(uuid())
+    email    String  @unique
+    isActive Boolean @default(true)
+
+    createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// 2. Integration & Catalog (Properties, Rooms, Content)
+// -----------------------------------------------------------------------------
+
+model Property {
+    id              String  @id @default(uuid())
+    slug            String  @unique
+    name            String
+    location        String
+    description     String  @db.Text
+    longDescription String  @db.Text
+    image           String // Main hero image
+    facebookPageId  String?
+
+    images    PropertyImage[]
+    rooms     Room[]
+    floorPlan FloorPlan?
+    amenities PropertyAmenity[] // Many-to-many via explicit table or implicit
+    reviews   Review[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model PropertyImage {
+    id         String   @id @default(uuid())
+    url        String
+    caption    String?
+    propertyId String
+    property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Room {
+    id          String  @id @default(uuid())
+    propertyId  String
+    name        String
+    description String  @db.Text
+    capacity    Int
+    price       Decimal @db.Decimal(10, 2)
+    sizeSqM     Float?
+    image       String
+
+    property  Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+    amenities String[] // Array of simple strings for room amenities
+    floorPlan FloorPlan?
+    bookings  BookingItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model PropertyAmenity {
+    id         String   @id @default(uuid())
+    name       String
+    icon       String?
+    propertyId String
+    property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+// Interactive Floor Plans
+model FloorPlan {
+    id       String @id @default(uuid())
+    imageUrl String
+
+    // Relations (A floor plan can belong to a Property OR a Room)
+    propertyId String?   @unique
+    property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+    roomId String? @unique
+    room   Room?   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+    hotspots Hotspot[]
+}
+
+model Hotspot {
+    id          String  @id @default(uuid())
+    floorPlanId String
+    label       String
+    description String?
+    type        String // lobby, pool, etc.
+    x           Float // Percentage coordinates (0-100)
+    y           Float
+
+    floorPlan FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+}
+
+// Content: Local Experiences
+model Experience {
+    id          String @id @default(uuid())
+    title       String
+    description String @db.Text
+    category    String // Nature, Culture, Food, etc.
+    image       String
+    distance    String
+
+    createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// 3. Commerce (Bookings, Coupons)
+// -----------------------------------------------------------------------------
+
+model Booking {
+    id       String @id @default(uuid())
+    shortRef String @unique // Short reference code (e.g. "ABC-123")
+
+    userId String? // Optional: Guest might not be logged in (guest checkout)
+    user   User?   @relation(fields: [userId], references: [id])
+
+    // Guest Details (Snapshot for this specific booking)
+    guestFirstName  String
+    guestLastName   String
+    guestEmail      String
+    guestPhone      String
+    specialRequests String? @db.Text
+
+    // Financials
+    totalAmount   Decimal       @db.Decimal(10, 2)
+    taxAmount     Decimal       @db.Decimal(10, 2)
+    serviceCharge Decimal       @db.Decimal(10, 2)
+    currency      String        @default("PHP")
+    status        BookingStatus @default(PENDING)
+    paymentStatus PaymentStatus @default(UNPAID)
+
+    items    BookingItem[]
+    payments Payment[] // Relation to payments (PayMongo)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+enum BookingStatus {
+    PENDING
+    CONFIRMED
+    CANCELLED
+    COMPLETED
+}
+
+enum PaymentStatus {
+    UNPAID
+    PAID
+    PARTIALLY_PAID
+    REFUNDED
+    FAILED
+}
+
+model Payment {
+    id        String  @id @default(uuid())
+    bookingId String
+    amount    Decimal @db.Decimal(10, 2)
+    currency  String  @default("PHP")
+    provider  String  @default("PAYMONGO") // PAYMONGO, CASH, etc.
+    status    String // SUCCEEDED, PENDING, FAILED (Provider status)
+
+    // PayMongo Specifics
+    paymentIntentId String? @unique // pi_...
+    sourceId        String? // src_...
+    externalId      String? @unique // id from provider (pay_...)
+    paymentMethod   String? // gcash, card, grab_pay
+
+    metadata Json? // Store full raw response from PayMongo
+
+    booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model BookingItem {
+    id        String @id @default(uuid())
+    bookingId String
+    roomId    String
+
+    checkIn       DateTime
+    checkOut      DateTime
+    guests        Int
+    pricePerNight Decimal  @db.Decimal(10, 2) // Price snapshot at time of booking
+
+    booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    room    Room    @relation(fields: [roomId], references: [id])
+}
+
+model Coupon {
+    id          String     @id @default(uuid())
+    code        String     @unique
+    type        CouponType
+    value       Decimal    @db.Decimal(10, 2)
+    description String?
+    isActive    Boolean    @default(true)
+    expiresAt   DateTime?
+}
+
+enum CouponType {
+    PERCENTAGE
+    FIXED_AMOUNT
+}
+
+// -----------------------------------------------------------------------------
+// 4. Social & Analytics
+// -----------------------------------------------------------------------------
+
+model Review {
+    id      String  @id @default(uuid())
+    rating  Int // 1-5
+    comment String? @db.Text
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id])
+
+    propertyId String
+    property   Property @relation(fields: [propertyId], references: [id])
+
+    createdAt DateTime @default(now())
+}
+
+model AnalyticsEvent {
+    id        String  @id @default(uuid())
+    eventType String // VIEW_PAGE, ADD_TO_CART, BOOKING_INITIATED
+    url       String?
+    metadata  Json? // Flexible JSON for event details
+
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id])
+
+    createdAt DateTime @default(now())
+}

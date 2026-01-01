@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { db } from '@/lib/db';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -28,6 +29,28 @@ export async function POST(request: Request) {
     }
 
     const { email } = result.data;
+
+    // Check if already subscribed
+    const existingSubscriber = await db.newsletterSubscriber.findUnique({
+      where: { email }
+    });
+
+    if (existingSubscriber) {
+      if (!existingSubscriber.isActive) {
+        // Reactivate subscription
+        await db.newsletterSubscriber.update({
+          where: { email },
+          data: { isActive: true }
+        });
+      }
+      // Already subscribed, but still send success
+    } else {
+      // Create new subscriber
+      await db.newsletterSubscriber.create({
+        data: { email }
+      });
+    }
+
     const senderEmail = "no-reply@doloreshotels.com"; 
     const primaryColor = "#f97316"; // Orange-500
 
