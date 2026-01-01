@@ -60,6 +60,27 @@ export async function GET(request: Request) {
                 data: { status: 'PAID' }
              });
              
+             // Send confirmation email
+             if (booking.guestEmail) {
+                const firstItem = booking.items[0];
+                const checkIn = firstItem ? new Date(firstItem.checkIn).toLocaleDateString('en-US', { 
+                   weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+                }) : 'N/A';
+                const checkOut = firstItem ? new Date(firstItem.checkOut).toLocaleDateString('en-US', { 
+                   weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+                }) : 'N/A';
+
+                await sendBookingConfirmationEmail({
+                   email: booking.guestEmail,
+                   ref: booking.shortRef, // Link will use this ref
+                   propertyName: booking.items[0]?.room?.property?.name || 'Tropicana Hotel',
+                   checkIn,
+                   checkOut,
+                   amount: `PHP ${Number(booking.totalAmount).toLocaleString()}`,
+                   guestName: `${booking.guestFirstName} ${booking.guestLastName}`
+                });
+             }
+             
              // Refresh booking data to return
              booking = { ...booking, ...updatedBooking };
           }
