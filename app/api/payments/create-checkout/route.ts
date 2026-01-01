@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
       description,
       customerEmail: booking.guestEmail,
       customerName: `${booking.guestFirstName} ${booking.guestLastName}`,
-      successUrl: `${baseUrl}/bookings?payment=success&ref=${booking.shortRef}`,
-      cancelUrl: `${baseUrl}/cart?payment=cancelled&ref=${booking.shortRef}`,
+      successUrl: `${baseUrl}/payment/success`,
+      cancelUrl: `${baseUrl}/book`,
       metadata: {
         guest_name: `${booking.guestFirstName} ${booking.guestLastName}`,
         guest_email: booking.guestEmail,

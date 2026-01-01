@@ -28,13 +28,13 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown } from "lucide-react";
-import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import { useSession } from "next-auth/react";
 
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 function BookingForm() {
    const router = useRouter();
    const searchParams = useSearchParams();
+   const { data: session } = useSession();
    
    const propertySlug = searchParams.get("property");
    const roomId = searchParams.get("room");
@@ -72,9 +72,7 @@ function BookingForm() {
 
    const [isLoading, setIsLoading] = useState(false);
    const [paymentError, setPaymentError] = useState("");
-   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-   const [turnstileError, setTurnstileError] = useState("");
-   const turnstileRef = useRef<TurnstileInstance>(null);
+   const [pollingBookingId, setPollingBookingId] = useState<string | null>(null);
    const clearCart = useCartStore((state) => state.clearCart);
 
    const [guestDetails, setGuestDetails] = useState({
@@ -84,6 +82,19 @@ function BookingForm() {
       phone: "",
       specialRequests: ""
    });
+
+   // Pre-fill guest details when user is logged in
+   useEffect(() => {
+      if (session?.user) {
+         const nameParts = session.user.name?.split(' ') || [];
+         setGuestDetails(prev => ({
+            ...prev,
+            firstName: prev.firstName || nameParts[0] || '',
+            lastName: prev.lastName || nameParts.slice(1).join(' ') || '',
+            email: prev.email || session.user.email || ''
+         }));
+      }
+   }, [session]);
 
    // Extras & Coupons (Global)
    const EXTRAS = [
@@ -134,15 +145,57 @@ function BookingForm() {
    const taxes = discountedSubtotal * TAX_RATE;
    const total = discountedSubtotal + taxes + serviceCharge;
 
+   // Polling for booking status (placed after all dependencies are declared)
+   useEffect(() => {
+      if (!pollingBookingId) return;
+
+      const pollInterval = setInterval(async () => {
+         try {
+            const statusRes = await fetch(`/api/bookings/status?id=${pollingBookingId}`);
+            if (statusRes.ok) {
+               const statusData = await statusRes.json();
+               // Check if payment is successful
+               if (statusData.status === 'CONFIRMED' || statusData.paymentStatus === 'PAID' || statusData.paymentStatus === 'PARTIALLY_PAID') {
+                  clearInterval(pollInterval);
+                  
+                  // Construct confirmation URL with necessary details
+                  const params = new URLSearchParams();
+                  params.set("ref", statusData.shortRef || 'confirmed');
+                  if (property?.name) params.set("propertyName", property.name);
+                  if (room?.name) params.set("roomName", room.name);
+                  if (date?.from) params.set("checkIn", date.from.toISOString());
+                  if (date?.to) params.set("checkOut", date.to.toISOString());
+                  params.set("total", total.toString());
+                  params.set("firstName", guestDetails.firstName);
+                  params.set("lastName", guestDetails.lastName);
+                  params.set("email", guestDetails.email);
+
+                  router.push(`/book/confirmation?${params.toString()}`);
+               }
+            }
+         } catch (e) {
+            console.error("Polling error", e);
+         }
+      }, 3000);
+
+      // Stop polling after 5 minutes (user requested timeout)
+      const timeoutId = setTimeout(() => {
+         clearInterval(pollInterval);
+         setPollingBookingId(null);
+         setPaymentError("Payment session expired or timed out. Please try again.");
+         setIsLoading(false);
+      }, 5 * 60 * 1000);
+
+      return () => {
+         clearInterval(pollInterval);
+         clearTimeout(timeoutId);
+      };
+   }, [pollingBookingId, router, property, room, date, total, guestDetails, clearCart]);
+
    const handleBooking = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!isCartMode && (!property || !room)) return;
 
-      if (!turnstileToken) {
-         setTurnstileError("Please complete the security verification.");
-         return;
-      }
-      setTurnstileError("");
       setPaymentError("");
       setIsLoading(true);
       
@@ -194,9 +247,13 @@ function BookingForm() {
             return;
          }
 
-         // Clear cart and redirect to PayMongo checkout
+         // Clear cart and open PayMongo checkout in new tab
          clearCart();
-         window.location.href = checkoutData.checkoutUrl;
+         window.open(checkoutData.checkoutUrl, '_blank');
+         
+         // Start polling
+         setPollingBookingId(bookingResult.bookingId);
+         // Keep loading state true to show "Processing..." UI
 
       } catch (error) {
          console.error('Booking error:', error);
@@ -247,12 +304,12 @@ function BookingForm() {
 
    return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-         {/* Form */}
-         <div className="lg:col-span-7 space-y-12">
+         {/* Form - Second on mobile, first (left) on desktop */}
+         <div className="lg:col-span-7 lg:order-1 space-y-6 order-2">
              <div>
                 <h2 className="text-3xl font-serif italic mb-6">Guest Details</h2>
-                <form id="booking-form" onSubmit={handleBooking} className="space-y-6">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <form id="booking-form" onSubmit={handleBooking} className="space-y-4">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                          <label className="text-xs uppercase tracking-widest text-neutral-500">First Name</label>
                          <Input name="firstName" value={guestDetails.firstName} onChange={handleInputChange} required className="bg-neutral-950 border-white/10 text-white h-12 rounded-none focus:border-orange-500/50 focus:ring-0 transition-colors" />
@@ -277,7 +334,7 @@ function BookingForm() {
                 </form>
              </div>
 
-             <div className="border-t border-white/10 pt-12">
+             <div className="border-t border-white/10 pt-6">
                 <h2 className="text-3xl font-serif italic mb-6">Enhance Your Stay</h2>
                 <div className="grid grid-cols-1 gap-4">
                   <Popover>
@@ -329,43 +386,13 @@ function BookingForm() {
                 </div>
              </div>
              
-             <div className="border-t border-white/10 pt-12">
-                <h2 className="text-3xl font-serif italic mb-6">Property Policies</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
-                    {POLICIES.map((policy, index) => (
-                        <div key={index} className="space-y-2">
-                            <h4 className="uppercase tracking-widest text-xs text-neutral-500">{policy.title}</h4>
-                            <p className="text-neutral-300 font-light leading-relaxed">{policy.description}</p>
-                        </div>
-                    ))}
-                </div>
-             </div>
-
              {/* Payment Error Message */}
              {paymentError && (
-               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20 mb-4">
+               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20">
                   <X className="h-4 w-4" />
                   {paymentError}
                </div>
              )}
-
-             {/* Turnstile Error Message */}
-             {turnstileError && (
-               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20 mb-4">
-                  <X className="h-4 w-4" />
-                  {turnstileError}
-               </div>
-             )}
-
-             {/* Cloudflare Turnstile */}
-             <Turnstile
-               ref={turnstileRef}
-               siteKey={TURNSTILE_SITE_KEY}
-               onSuccess={(token) => setTurnstileToken(token)}
-               onError={() => setTurnstileToken(null)}
-               onExpire={() => setTurnstileToken(null)}
-               options={{ theme: "dark", size: "invisible" }}
-             />
              
              <Button 
                type="submit" 
@@ -386,11 +413,23 @@ function BookingForm() {
                )}
              </Button>
              <p className="text-xs text-center text-neutral-500">You will be redirected to PayMongo to complete your payment securely.</p>
+
+             <div className="border-t border-white/10 pt-12">
+                <h2 className="text-3xl font-serif italic mb-6">Property Policies</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+                    {POLICIES.map((policy, index) => (
+                        <div key={index} className="space-y-2">
+                            <h4 className="uppercase tracking-widest text-xs text-neutral-500">{policy.title}</h4>
+                            <p className="text-neutral-300 font-light leading-relaxed">{policy.description}</p>
+                        </div>
+                    ))}
+                </div>
+             </div>
          </div>
 
-         {/* Summary Sidebar */}
-         <div className="lg:col-span-5">
-            <div className="bg-white/5 border border-white/10 p-8 sticky top-32">
+         {/* Summary Sidebar - First on mobile, right side on desktop */}
+         <div className="lg:col-span-5 lg:order-2 order-1">
+            <div className="bg-white/5 border border-white/10 p-8 sticky top-24">
                <h3 className="text-xl font-serif italic mb-6">Your Stay</h3>
                
                {isCartMode ? (
