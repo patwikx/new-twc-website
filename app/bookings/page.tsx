@@ -138,9 +138,11 @@ const BookingsPage = async () => {
                        </div>
                        
                        <div className="mt-8 pt-6 border-t border-white/5 flex justify-end">
-                          <Button variant="link" className="text-white hover:text-orange-500 p-0 h-auto font-normal text-xs uppercase tracking-widest group-hover:underline decoration-orange-500/50 underline-offset-4 decoration-1 transition-all">
-                             View Booking Details <ArrowRight className="ml-2 h-3 w-3" />
-                          </Button>
+                           <Button asChild variant="link" className="text-white hover:text-orange-500 p-0 h-auto font-normal text-xs uppercase tracking-widest group-hover:underline decoration-orange-500/50 underline-offset-4 decoration-1 transition-all">
+                              <Link href={`/bookings/${booking.id}`}>
+                                 View Booking Details <ArrowRight className="ml-2 h-3 w-3" />
+                              </Link>
+                           </Button>
                        </div>
                     </div>
                  </div>

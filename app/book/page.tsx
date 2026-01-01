@@ -73,6 +73,7 @@ function BookingForm() {
    const [isLoading, setIsLoading] = useState(false);
    const [paymentError, setPaymentError] = useState("");
    const [pollingBookingId, setPollingBookingId] = useState<string | null>(null);
+   const [bookingShortRef, setBookingShortRef] = useState<string | null>(null);
    const clearCart = useCartStore((state) => state.clearCart);
 
    const [guestDetails, setGuestDetails] = useState({
@@ -190,7 +191,7 @@ function BookingForm() {
          clearInterval(pollInterval);
          clearTimeout(timeoutId);
       };
-   }, [pollingBookingId, router, property, room, date, total, guestDetails, clearCart]);
+   }, [pollingBookingId, router, property, room, date, total, guestDetails]);
 
    const handleBooking = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -249,7 +250,7 @@ function BookingForm() {
 
          // Clear cart and open PayMongo checkout in new tab
          clearCart();
-         window.open(checkoutData.checkoutUrl, '_blank');
+         window.location.href = checkoutData.checkoutUrl;
          
          // Start polling
          setPollingBookingId(bookingResult.bookingId);

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       description,
       customerEmail: booking.guestEmail,
       customerName: `${booking.guestFirstName} ${booking.guestLastName}`,
-      successUrl: `${baseUrl}/payment/success`,
+      successUrl: `${baseUrl}/book/confirmation?id=${booking.id}`,
       cancelUrl: `${baseUrl}/book`,
       metadata: {
         guest_name: `${booking.guestFirstName} ${booking.guestLastName}`,

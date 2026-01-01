@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
 import { sendBookingConfirmationEmail } from '@/lib/mail';
+
 import { 
   WebhookEvent, 
   CheckoutSessionWebhookData, 
@@ -76,6 +77,8 @@ function verifyPaymongoSignature(rawBody: string, signatureHeader: string, secre
     return false;
   }
 }
+
+
 
 export async function POST(req: NextRequest): Promise<NextResponse<WebhookResponse>> {
   let webhookEventRecord: { id: string } | null = null;
@@ -330,6 +333,7 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
     });
     
     console.log(`✅ Payment confirmed for booking ${booking.shortRef}`);
+
 
     // Send confirmation email to guest
     if (amountDue <= 0) {
