@@ -30,6 +30,11 @@ export const cancelBooking = async (bookingId: string) => {
   }
 
   // Policy Check
+  if (!booking.items || booking.items.length === 0) {
+    return { error: "Booking has no check-in date." };
+  }
+
+  // Policy Check
   const checkInDate = new Date(booking.items[0].checkIn); // Assuming first item defines check-in
   const now = new Date();
   
