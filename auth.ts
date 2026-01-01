@@ -2,7 +2,6 @@ import NextAuth from "next-auth"
 import { authConfig } from "./auth.config"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { db } from "@/lib/db"
-import Facebook from "next-auth/providers/facebook"
 import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -54,7 +53,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   providers: [
     Google,
-    Facebook,
     Credentials({
       async authorize(credentials) {
         const validatedFields = LoginSchema.safeParse(credentials);
