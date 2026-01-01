@@ -48,3 +48,30 @@ export const getBookingById = async (id: string) => {
     return null;
   }
 };
+
+export const getBookingByRef = async (shortRef: string) => {
+  try {
+    const booking = await db.booking.findUnique({
+      where: { shortRef },
+      include: {
+        items: {
+          include: {
+            room: true
+          }
+        },
+        property: true,
+        room: true,
+        payments: {
+          orderBy: {
+            createdAt: 'desc'
+          }
+        },
+        user: true
+      }
+    });
+
+    return booking;
+  } catch (error) {
+    return null;
+  }
+};
