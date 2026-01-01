@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CompletePaymentButton } from "@/components/booking/CompletePaymentButton";
 import { DownloadReceiptButton } from "@/components/booking/DownloadReceiptButton";
+import { CancelBookingButton } from "@/components/booking/CancelBookingButton";
 
 export default async function BookingDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -103,6 +104,15 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
                        booking={booking}
                        className="border-white/20 text-white hover:bg-white hover:text-black h-12"
                     />
+                 )}
+                 {['PENDING', 'CONFIRMED'].includes(booking.status) && (
+                     <CancelBookingButton 
+                        bookingId={booking.id}
+                        checkInDate={checkIn}
+                        status={booking.status}
+                        amountPaid={Number(booking.amountPaid)}
+                        paymentStatus={booking.paymentStatus}
+                     />
                  )}
                  {/* Only show 'Pay Now' if there is a balance due and status is not cancelled */}
                  {Number(booking.amountDue) > 0 && booking.status !== 'CANCELLED' && (
