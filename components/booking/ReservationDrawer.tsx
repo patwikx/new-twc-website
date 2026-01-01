@@ -125,7 +125,11 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                 </div>
 
                 <div className="space-y-3">
-                    <Link href="/book" className="w-full block" onClick={() => setDrawerOpen(false)}>
+                    <Link 
+                      href={`/book?cart=${encodeURIComponent(JSON.stringify(items))}`} 
+                      className="w-full block" 
+                      onClick={() => setDrawerOpen(false)}
+                    >
                         <Button className="w-full h-12 bg-white text-black hover:bg-neutral-200 rounded-none uppercase tracking-widest text-xs font-bold flex justify-between items-center px-6 group">
                             <span>Complete Booking</span>
                             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
