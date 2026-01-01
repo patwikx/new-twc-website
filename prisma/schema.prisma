@@ -176,8 +176,9 @@ model Property {
     amenities PropertyAmenity[] // Many-to-many via explicit table or implicit
     reviews   Review[]
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    bookings  Booking[]
 }
 
 model PropertyImage {
@@ -198,10 +199,11 @@ model Room {
     sizeSqM     Float?
     image       String
 
-    property  Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-    amenities String[] // Array of simple strings for room amenities
-    floorPlan FloorPlan?
-    bookings  BookingItem[]
+    property       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+    amenities      String[] // Array of simple strings for room amenities
+    floorPlan      FloorPlan?
+    bookings       BookingItem[]
+    directBookings Booking[]     @relation("BookingRoom")
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -276,9 +278,17 @@ model Booking {
     totalAmount   Decimal       @db.Decimal(10, 2)
     taxAmount     Decimal       @db.Decimal(10, 2)
     serviceCharge Decimal       @db.Decimal(10, 2)
+    amountPaid    Decimal       @default(0) @db.Decimal(10, 2)
+    amountDue     Decimal       @db.Decimal(10, 2)
     currency      String        @default("PHP")
     status        BookingStatus @default(PENDING)
     paymentStatus PaymentStatus @default(UNPAID)
+
+    // Direct room/property reference for quick access
+    roomId     String?
+    room       Room?     @relation("BookingRoom", fields: [roomId], references: [id])
+    propertyId String?
+    property   Property? @relation(fields: [propertyId], references: [id])
 
     items    BookingItem[]
     payments Payment[] // Relation to payments (PayMongo)
@@ -308,13 +318,27 @@ model Payment {
     amount    Decimal @db.Decimal(10, 2)
     currency  String  @default("PHP")
     provider  String  @default("PAYMONGO") // PAYMONGO, CASH, etc.
-    status    String // SUCCEEDED, PENDING, FAILED (Provider status)
+    status    String // PAID, PENDING, FAILED
 
     // PayMongo Specifics
-    paymentIntentId String? @unique // pi_...
-    sourceId        String? // src_...
-    externalId      String? @unique // id from provider (pay_...)
-    paymentMethod   String? // gcash, card, grab_pay
+    paymentIntentId         String? @unique // pi_...
+    sourceId                String? // src_...
+    externalId              String? @unique // id from provider (pay_...)
+    paymentMethod           String? // gcash, card, grab_pay
+    paymentProvider         String? // paymongo, cash, etc.
+    paymongoPaymentIntentId String? @unique
+    paymongoPaymentMethodId String?
+    paymongoSourceId        String?
+    paymongoCheckoutUrl     String?
+    paymongoClientKey       String?
+    transactionId           String?
+    referenceNumber         String?
+    description             String?
+
+    // Timestamps
+    paidAt        DateTime?
+    failedAt      DateTime?
+    failureReason String?
 
     metadata Json? // Store full raw response from PayMongo
 
@@ -379,6 +403,23 @@ model AnalyticsEvent {
 
     userId String?
     user   User?   @relation(fields: [userId], references: [id])
+
+    createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// 5. PayMongo Webhook Events (Idempotency)
+// -----------------------------------------------------------------------------
+
+model PayMongoWebhookEvent {
+    id              String    @id @default(uuid())
+    eventId         String    @unique // PayMongo event ID for deduplication
+    eventType       String // checkout_session.payment.paid, etc.
+    paymentIntentId String?
+    processed       Boolean   @default(false)
+    processedAt     DateTime?
+    processingError String?   @db.Text
+    rawPayload      Json?
 
     createdAt DateTime @default(now())
 }

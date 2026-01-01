@@ -3,15 +3,16 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PROPERTIES, TAX_RATE, SERVICE_CHARGE_RATE, COUPONS, POLICIES } from "@/lib/mock-data";
-import { CartItem } from "@/store/useCartStore";
+import { CartItem, useCartStore } from "@/store/useCartStore";
 import { motion } from "framer-motion";
-import { CreditCard, Lock, Check, X } from "lucide-react";
+import { CreditCard, Lock, Check, X, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useRef } from "react";
 import { addDays, differenceInDays, parseISO, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/booking/DateRangePicker";
+import { createBooking } from "@/actions/create-booking";
 import {
   Command,
   CommandEmpty,
@@ -70,9 +71,11 @@ function BookingForm() {
    const room = property?.rooms.find(r => r.id === roomId);
 
    const [isLoading, setIsLoading] = useState(false);
+   const [paymentError, setPaymentError] = useState("");
    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
    const [turnstileError, setTurnstileError] = useState("");
    const turnstileRef = useRef<TurnstileInstance>(null);
+   const clearCart = useCartStore((state) => state.clearCart);
 
    const [guestDetails, setGuestDetails] = useState({
       firstName: "",
@@ -131,7 +134,7 @@ function BookingForm() {
    const taxes = discountedSubtotal * TAX_RATE;
    const total = discountedSubtotal + taxes + serviceCharge;
 
-   const handleBooking = (e: React.FormEvent) => {
+   const handleBooking = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!isCartMode && (!property || !room)) return;
 
@@ -140,18 +143,66 @@ function BookingForm() {
          return;
       }
       setTurnstileError("");
+      setPaymentError("");
       setIsLoading(true);
       
-      setTimeout(() => {
-         const ref = Math.random().toString(36).substring(7).toUpperCase();
-         const params = new URLSearchParams();
-         params.set('ref', ref);
-         params.set('total', total.toString());
-         params.set('firstName', guestDetails.firstName);
-         params.set('lastName', guestDetails.lastName);
-         
-         router.push(`/book/confirmation?${params.toString()}`);
-      }, 2000);
+      try {
+         // Build cart items for booking
+         const itemsToBook = isCartMode 
+            ? cartItems.map(item => ({
+                 propertySlug: item.propertySlug,
+                 roomId: item.roomId,
+                 checkIn: new Date(item.checkIn),
+                 checkOut: new Date(item.checkOut),
+                 guests: item.guests
+              }))
+            : [{
+                 propertySlug: propertySlug!,
+                 roomId: roomId!,
+                 checkIn: date?.from || new Date(),
+                 checkOut: date?.to || addDays(new Date(), 1),
+                 guests: singleGuestCount
+              }];
+
+         // Create booking
+         const bookingResult = await createBooking(itemsToBook, {
+            firstName: guestDetails.firstName,
+            lastName: guestDetails.lastName,
+            email: guestDetails.email,
+            phone: guestDetails.phone,
+            specialRequests: guestDetails.specialRequests
+         });
+
+         if (!bookingResult.success) {
+            setPaymentError(bookingResult.error);
+            setIsLoading(false);
+            return;
+         }
+
+         // Create PayMongo checkout session
+         const checkoutResponse = await fetch('/api/payments/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: bookingResult.bookingId })
+         });
+
+         const checkoutData = await checkoutResponse.json();
+
+         if (!checkoutResponse.ok || checkoutData.error) {
+            setPaymentError(checkoutData.error || 'Failed to create payment session');
+            setIsLoading(false);
+            return;
+         }
+
+         // Clear cart and redirect to PayMongo checkout
+         clearCart();
+         window.location.href = checkoutData.checkoutUrl;
+
+      } catch (error) {
+         console.error('Booking error:', error);
+         setPaymentError('An unexpected error occurred. Please try again.');
+         setIsLoading(false);
+      }
    };
 
    if (!isCartMode && (!property || !room)) {
@@ -290,6 +341,14 @@ function BookingForm() {
                 </div>
              </div>
 
+             {/* Payment Error Message */}
+             {paymentError && (
+               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20 mb-4">
+                  <X className="h-4 w-4" />
+                  {paymentError}
+               </div>
+             )}
+
              {/* Turnstile Error Message */}
              {turnstileError && (
                <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20 mb-4">
@@ -311,12 +370,22 @@ function BookingForm() {
              <Button 
                type="submit" 
                form="booking-form"
-               disabled={true} 
-               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-neutral-800 text-neutral-500 cursor-not-allowed" 
+               disabled={isLoading || !guestDetails.firstName || !guestDetails.lastName || !guestDetails.email || !guestDetails.phone} 
+               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-white text-black hover:bg-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed flex items-center justify-center gap-3" 
              >
-               Payment Disabled (Coming Soon)
+               {isLoading ? (
+                 <>
+                   <Loader2 className="h-5 w-5 animate-spin" />
+                   Processing...
+                 </>
+               ) : (
+                 <>
+                   <Lock className="h-4 w-4" />
+                   Proceed to Secure Payment
+                 </>
+               )}
              </Button>
-             <p className="text-xs text-center text-neutral-500">By clicking "Pay", you agree to our Terms of Service.</p>
+             <p className="text-xs text-center text-neutral-500">You will be redirected to PayMongo to complete your payment securely.</p>
          </div>
 
          {/* Summary Sidebar */}
