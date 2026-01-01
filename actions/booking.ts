@@ -12,61 +12,58 @@ export const cancelBooking = async (bookingId: string) => {
     return { error: "You must be logged in to cancel a booking." };
   }
 
-  const booking = await db.booking.findUnique({
-    where: { id: bookingId },
-    include: { items: true }
-  });
-
-  if (!booking) {
-    return { error: "Booking not found." };
-  }
-
-  if (booking.userId !== userId) {
-    return { error: "Unauthorized." };
-  }
-
-  if (booking.status === 'CANCELLED') {
-    return { error: "Booking is already cancelled." };
-  }
-
-  // Policy Check
-  if (!booking.items || booking.items.length === 0) {
-    return { error: "Booking has no check-in date." };
-  }
-
-  // Policy Check
-  const checkInDate = new Date(booking.items[0].checkIn); // Assuming first item defines check-in
-  const now = new Date();
-  
-  // 48 hours in milliseconds
-  const fortyEightHours = 48 * 60 * 60 * 1000;
-
-  if (booking.status === 'CONFIRMED') {
-     const timeDifference = checkInDate.getTime() - now.getTime();
-     if (timeDifference < fortyEightHours) {
-        return { error: "Confirmed bookings can only be cancelled at least 48 hours before check-in." };
-     }
-  }
-
   try {
-     await db.booking.update({
+    await db.$transaction(async (tx) => {
+      // Re-fetch booking inside transaction to ensure latest state
+      const booking = await tx.booking.findUnique({
         where: { id: bookingId },
-        data: { status: 'CANCELLED' }
-     });
+        include: { items: true }
+      });
 
-     // Also cancel any pending payments? Or is that handled separately?
-     // Good to ensure pending payments are failed/cancelled
-     await db.payment.updateMany({
-        where: { bookingId: bookingId, status: 'PENDING' },
-        data: { status: 'FAILED', failureReason: 'Booking Cancelled by User' }
-     });
+      if (!booking) {
+        throw new Error("Booking not found.");
+      }
 
-     revalidatePath(`/bookings/${bookingId}`);
-     revalidatePath('/bookings');
-     
-     return { success: "Booking cancelled successfully." };
-  } catch (error) {
+      if (booking.userId !== userId) {
+        throw new Error("Unauthorized.");
+      }
+
+      if (booking.status === 'CANCELLED') {
+         throw new Error("Booking is already cancelled.");
+      }
+
+      // Policy Check
+      const checkInDate = new Date(booking.items[0].checkIn);
+      const now = new Date();
+      const fortyEightHours = 48 * 60 * 60 * 1000;
+
+      if (booking.status === 'CONFIRMED') {
+         const timeDifference = checkInDate.getTime() - now.getTime();
+         if (timeDifference < fortyEightHours) {
+            throw new Error("Confirmed bookings can only be cancelled at least 48 hours before check-in.");
+         }
+      }
+
+      // Update Booking Status
+      await tx.booking.update({
+         where: { id: bookingId },
+         data: { status: 'CANCELLED' }
+      });
+
+      // Cancel Pending Payments
+      await tx.payment.updateMany({
+         where: { bookingId: bookingId, status: 'PENDING' },
+         data: { status: 'FAILED', failureReason: 'Booking Cancelled by User' }
+      });
+    });
+
+    revalidatePath(`/bookings/${bookingId}`);
+    revalidatePath('/bookings');
+    
+    return { success: "Booking cancelled successfully." };
+
+  } catch (error: any) {
      console.error("Cancellation error:", error);
-     return { error: "Failed to cancel booking. Please try again." };
+     return { error: error.message || "Failed to cancel booking. Please try again." };
   }
 };
