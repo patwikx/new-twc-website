@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { CalendarDays, MapPin, Users, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
+import { CompletePaymentButton } from "@/components/booking/CompletePaymentButton";
 
 const BookingsPage = async () => {
   const session = await auth();

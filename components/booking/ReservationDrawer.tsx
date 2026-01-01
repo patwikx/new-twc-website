@@ -12,14 +12,16 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { X, Calendar, User, ShoppingBag, ArrowRight } from "lucide-react";
+import { X, Calendar, User, ShoppingBag, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { format } from "date-fns";
+import { useState } from "react";
 
 export function ReservationDrawer({ children }: { children?: React.ReactNode }) {
   const { items, removeFromCart, getCartSubtotal, toggleDrawer, isDrawerOpen, setDrawerOpen, getItemDetails } = useCartStore();
   const subtotal = getCartSubtotal();
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <Sheet open={isDrawerOpen} onOpenChange={setDrawerOpen}>
@@ -128,15 +130,30 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                     <Link 
                       href={`/book?cart=${encodeURIComponent(JSON.stringify(items))}`} 
                       className="w-full block" 
-                      onClick={() => setDrawerOpen(false)}
+                      onClick={(e) => {
+                         if (isLoading) e.preventDefault();
+                         else {
+                            setIsLoading(true);
+                            // Allow navigation to happen
+                            setTimeout(() => setDrawerOpen(false), 500); 
+                         }
+                      }}
                     >
-                        <Button className="w-full h-12 bg-white text-black hover:bg-neutral-200 rounded-none uppercase tracking-widest text-xs font-bold flex justify-between items-center px-6 group">
-                            <span>Complete Booking</span>
-                            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        <Button disabled={isLoading} className="w-full h-12 bg-white text-black hover:bg-neutral-200 rounded-none uppercase tracking-widest text-xs font-bold flex justify-between items-center px-6 group">
+                            {isLoading ? (
+                               <span className="flex items-center gap-2">
+                                  <Loader2 className="w-4 h-4 animate-spin" /> Processing...
+                               </span>
+                            ) : (
+                               <>
+                                  <span>Complete Booking</span>
+                                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                               </>
+                            )}
                         </Button>
                     </Link>
                     <SheetClose asChild>
-                        <Button variant="outline" className="w-full h-10 border-white/10 text-neutral-400 hover:text-white hover:bg-white/5 rounded-none uppercase tracking-widest text-[10px]">
+                        <Button disabled={isLoading} variant="outline" className="w-full h-10 border-white/10 text-neutral-400 hover:text-white hover:bg-white/5 rounded-none uppercase tracking-widest text-[10px]">
                             Add Another Room
                         </Button>
                     </SheetClose>
