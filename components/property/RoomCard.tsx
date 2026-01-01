@@ -16,7 +16,7 @@ interface RoomCardProps {
 }
 
 export function RoomCard({ room, property }: RoomCardProps) {
-  const addToCart = useCartStore((state) => state.addToCart);
+  const { addToCart, setDrawerOpen } = useCartStore();
   
   // Hydration safety
   const [mounted, setMounted] = useState(false);
@@ -24,9 +24,7 @@ export function RoomCard({ room, property }: RoomCardProps) {
     setMounted(true);
   }, []);
 
-  const [isAdded, setIsAdded] = useState(false);
-
-  const handleAddToCart = () => {
+  const handleSelectRoom = () => {
     addToCart({
       propertySlug: property.slug,
       roomId: room.id,
@@ -34,8 +32,7 @@ export function RoomCard({ room, property }: RoomCardProps) {
       checkOut: addDays(new Date(), 1),
       guests: 2,
     });
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 2000);
+    setDrawerOpen(true);
   };
 
   return (
@@ -78,23 +75,10 @@ export function RoomCard({ room, property }: RoomCardProps) {
             </Button>
           </Link>
           <Button
-            onClick={handleAddToCart}
-            disabled={isAdded}
-            className={`w-full h-12 rounded-none tracking-widest text-xs uppercase transition-all duration-500 ${
-              isAdded 
-                ? "bg-green-600 text-white hover:bg-green-600" 
-                : "bg-white text-black hover:bg-neutral-200"
-            }`}
+            onClick={handleSelectRoom}
+            className="w-full h-12 rounded-none tracking-widest text-xs uppercase transition-all duration-500 bg-white text-black hover:bg-neutral-200"
           >
-            {isAdded ? (
-              <>
-                <Check className="h-4 w-4 mr-2" /> Added to Cart
-              </>
-            ) : (
-              <>
-                <ShoppingCart className="h-4 w-4 mr-2" /> Add to Cart
-              </>
-            )}
+            Select Room
           </Button>
         </div>
       </div>

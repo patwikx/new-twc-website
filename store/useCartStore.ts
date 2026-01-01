@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { PROPERTIES, Room, Property } from "@/lib/mock-data";
 import { differenceInDays } from "date-fns";
+import { toast } from "sonner";
 
 export interface CartItem {
   id: string; // Unique cart item ID
@@ -21,19 +22,47 @@ interface CartStore {
   getItemDetails: (item: CartItem) => { property: Property; room: Room } | null;
   getCartSubtotal: () => number;
   itemCount: number;
+  isDrawerOpen: boolean;
+  setDrawerOpen: (isOpen: boolean) => void;
+  toggleDrawer: () => void;
 }
 
 export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      isDrawerOpen: false,
       
       addToCart: (item) => {
+        const { items } = get();
+        const existingItem = items.find(
+          (i) =>
+            i.propertySlug === item.propertySlug &&
+            i.roomId === item.roomId &&
+            new Date(i.checkIn).getTime() === new Date(item.checkIn).getTime() &&
+            new Date(i.checkOut).getTime() === new Date(item.checkOut).getTime()
+        );
+
+        if (existingItem) {
+          toast.info("This room is already in your reservation.", {
+            description: "Opening reservation drawer...",
+          });
+          set({ isDrawerOpen: true });
+          return;
+        }
+
         const newItem: CartItem = {
           ...item,
           id: `${item.propertySlug}-${item.roomId}-${Date.now()}`,
         };
         set((state) => ({ items: [...state.items, newItem] }));
+        toast.success("Room added to reservation.", {
+           description: "View your stay in the drawer.",
+           action: {
+             label: "View",
+             onClick: () => set({ isDrawerOpen: true }),
+           },
+        });
       },
 
       removeFromCart: (id) => {
@@ -74,6 +103,9 @@ export const useCartStore = create<CartStore>()(
         }, 0);
       },
 
+      setDrawerOpen: (isOpen) => set({ isDrawerOpen: isOpen }),
+      toggleDrawer: () => set((state) => ({ isDrawerOpen: !state.isDrawerOpen })),
+
       get itemCount() {
         return get().items.length;
       }
@@ -81,8 +113,8 @@ export const useCartStore = create<CartStore>()(
     {
       name: 'twc-cart-storage',
       storage: createJSONStorage(() => localStorage),
-      // Handle date deserialization if needed, but strings work fine for simple recreation
-      skipHydration: true, 
+      skipHydration: true,
+      partialize: (state) => ({ items: state.items }), // Only persist items, not UI state
     }
   )
 );

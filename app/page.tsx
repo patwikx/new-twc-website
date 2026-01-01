@@ -2,6 +2,7 @@
 
 import { BookingWidget } from "@/components/booking/BookingWidget";
 import { Button } from "@/components/ui/button";
+import { BackToTopButton } from "@/components/ui/back-to-top";
 import { PROPERTIES } from "@/lib/mock-data";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { ArrowRight, Star, Plus, Mail } from "lucide-react";
@@ -42,7 +43,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-neutral-950" ref={ref}>
       {/* Immersive Hero Section */}
-      <section className="relative h-[110vh] flex items-center justify-center overflow-hidden">
+      <section className="relative min-h-[110vh] h-auto flex items-center justify-center overflow-hidden py-20">
         {/* Parallax Background */}
         <motion.div 
           style={{ y, opacity }}
@@ -102,7 +103,7 @@ export default function Home() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1, duration: 1 }}
-          className="absolute bottom-12 left-1/2 -translate-x-1/2 text-white/50 flex flex-col items-center gap-4 z-30"
+          className="absolute bottom-12 left-1/2 -translate-x-1/2 text-white/50 flex flex-col items-center gap-4 z-20"
         >
           <span className="text-[10px] uppercase tracking-[0.2em]">Explore</span>
           <div className="w-[1px] h-24 bg-gradient-to-b from-white to-transparent" />
@@ -232,6 +233,9 @@ export default function Home() {
 
       {/* Newsletter Section */}
       <NewsletterSection />
+      
+      {/* Back to Top */}
+      <BackToTopButton />
     </div>
   );
 }
