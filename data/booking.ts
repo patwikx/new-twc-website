@@ -21,3 +21,30 @@ export const getBookingsByUserId = async (userId: string) => {
     return null;
   }
 };
+
+export const getBookingById = async (id: string) => {
+  try {
+    const booking = await db.booking.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            room: true
+          }
+        },
+        property: true,
+        room: true,
+        payments: {
+          orderBy: {
+            createdAt: 'desc'
+          }
+        },
+        user: true
+      }
+    });
+
+    return booking;
+  } catch (error) {
+    return null;
+  }
+};
