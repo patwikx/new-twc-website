@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { CompletePaymentButton } from "@/components/booking/CompletePaymentButton";
+import { DownloadReceiptButton } from "@/components/booking/DownloadReceiptButton";
 
 export default async function BookingDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -97,15 +99,17 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
               </div>
               <div className="flex gap-3">
                  {booking.status === 'CONFIRMED' && (
-                    <Button variant="outline" className="border-white/20 text-white hover:bg-white hover:text-black rounded-none h-12 uppercase tracking-widest text-xs gap-2">
-                       <Download className="h-4 w-4" /> Download Receipt
-                    </Button>
+                    <DownloadReceiptButton 
+                       booking={booking}
+                       className="border-white/20 text-white hover:bg-white hover:text-black h-12"
+                    />
                  )}
                  {/* Only show 'Pay Now' if there is a balance due and status is not cancelled */}
                  {Number(booking.amountDue) > 0 && booking.status !== 'CANCELLED' && (
-                    <Button className="bg-orange-600 hover:bg-orange-700 text-white rounded-none h-12 uppercase tracking-widest text-xs gap-2">
-                       <CreditCard className="h-4 w-4" /> Complete Payment
-                    </Button>
+                    <CompletePaymentButton 
+                       bookingId={booking.id} 
+                       className="bg-orange-600 hover:bg-orange-700 text-white h-12" 
+                    />
                  )}
               </div>
            </div>

@@ -9,6 +9,7 @@ import { jsPDF } from "jspdf";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useCartStore } from "@/store/useCartStore";
 
 type BookingType = {
   id: string;
@@ -29,6 +30,12 @@ export default function ConfirmationClient({ booking: initialBooking }: { bookin
   const [currentStatus, setCurrentStatus] = useState(initialBooking.status);
   const [currentPaymentStatus, setCurrentPaymentStatus] = useState(initialBooking.paymentStatus);
   const router = useRouter();
+  const clearCart = useCartStore((state) => state.clearCart);
+
+  // Clear cart on mount to ensure no stale items remain after processing
+  useEffect(() => {
+     clearCart();
+  }, [clearCart]);
 
   // Poll for status updates if payment is pending
   useEffect(() => {
@@ -270,6 +277,7 @@ export default function ConfirmationClient({ booking: initialBooking }: { bookin
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.8 }}
+            className={(isPaid || isFailed) ? 'block' : 'hidden'}
          >
             <Link href={`/bookings/${initialBooking.id}`}>
                <Button className="rounded-none h-14 px-8 bg-white text-black hover:bg-neutral-200 uppercase tracking-widest text-xs font-semibold">
