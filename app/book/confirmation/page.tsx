@@ -1,14 +1,15 @@
-import { getBookingById } from "@/data/booking";
+import { getBookingById, getBookingByRef } from "@/data/booking";
 import { redirect } from "next/navigation";
 import ConfirmationClient from "./ConfirmationClient";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
-export default async function ConfirmationPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+export default async function ConfirmationPage({ searchParams }: { searchParams: Promise<{ id?: string; ref?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const bookingId = resolvedSearchParams.id;
+  const bookingRef = resolvedSearchParams.ref;
 
-  if (!bookingId) {
+  if (!bookingId && !bookingRef) {
     return (
        <div className="min-h-screen bg-neutral-950 text-white pt-32 pb-24 flex flex-col items-center justify-center">
           <h1 className="text-2xl font-serif mb-4">Invalid Booking Reference</h1>
@@ -19,7 +20,12 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
     );
   }
 
-  const bookingData = await getBookingById(bookingId);
+  let bookingData = null;
+  if (bookingId) {
+    bookingData = await getBookingById(bookingId);
+  } else if (bookingRef) {
+    bookingData = await getBookingByRef(bookingRef);
+  }
 
   if (!bookingData) {
     return (

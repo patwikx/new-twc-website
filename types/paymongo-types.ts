@@ -47,6 +47,7 @@ export interface CheckoutSessionAttributes {
   status: CheckoutSessionStatus;
   created_at: number;
   updated_at: number;
+  payments: PaymentResource[];
 }
 
 export interface LineItem {
