@@ -165,7 +165,7 @@ const processEmailRequest = async (body: any, apiKey: string) => {
               </div>
 
               <div style="text-align: center; margin-top: 30px;">
-                <a href="${confirmationLink}" style="display: inline-block; padding: 15px 30px; background-color: #ffffff; color: #000000; text-decoration: none; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">View Booking Receipt</a>
+                <a href="${confirmationLink}" style="display: inline-block; padding: 15px 30px; background-color: #ffffff; color: #000000; text-decoration: none; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">Download Receipt & Booking Details</a>
               </div>
             </div>
             <div style="background-color: #0a0a0a; padding: 30px 40px; text-align: center; border-top: 1px solid #333;">

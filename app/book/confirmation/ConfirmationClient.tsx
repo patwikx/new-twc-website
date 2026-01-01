@@ -214,7 +214,7 @@ export default function ConfirmationClient({ booking: initialBooking }: { bookin
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="bg-white/5 border border-white/10 p-8 md:p-12 space-y-8 rounded-none"
+            className={`bg-white/5 border border-white/10 p-8 md:p-12 space-y-8 rounded-none ${(isPaid || isFailed) ? 'block' : 'hidden'}`}
          >
             <div>
                <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">Booking Reference</p>

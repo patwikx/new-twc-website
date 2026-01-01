@@ -44,6 +44,9 @@ function BookingForm() {
 
    const [cartItems, setCartItems] = useState<CartItem[]>([]);
    const [isCartMode, setIsCartMode] = useState(false);
+   
+   // Zustand store
+   const storedItems = useCartStore((state) => state.items);
 
    useEffect(() => {
       if (cartParam) {
@@ -58,8 +61,16 @@ function BookingForm() {
          } catch (e) {
             console.error("Failed to parse cart", e);
          }
+      } else if (!propertySlug && !roomId && storedItems.length > 0) {
+         // If no direct booking params, try loading from store
+         setCartItems(storedItems.map(item => ({
+             ...item,
+             checkIn: new Date(item.checkIn),
+             checkOut: new Date(item.checkOut)
+         })));
+         setIsCartMode(true);
       }
-   }, [cartParam]);
+   }, [cartParam, propertySlug, roomId, storedItems]);
 
    // Single Room State
    const [date, setDate] = useState<DateRange | undefined>({
@@ -312,20 +323,20 @@ function BookingForm() {
                 <form id="booking-form" onSubmit={handleBooking} className="space-y-4">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                         <label className="text-xs uppercase tracking-widest text-neutral-500">First Name</label>
+                         <label className="text-xs uppercase tracking-widest text-neutral-500">First Name <span className="text-red-500">*</span></label>
                          <Input name="firstName" value={guestDetails.firstName} onChange={handleInputChange} required className="bg-neutral-950 border-white/10 text-white h-12 rounded-none focus:border-orange-500/50 focus:ring-0 transition-colors" />
                       </div>
                       <div className="space-y-2">
-                         <label className="text-xs uppercase tracking-widest text-neutral-500">Last Name</label>
+                         <label className="text-xs uppercase tracking-widest text-neutral-500">Last Name <span className="text-red-500">*</span></label>
                          <Input name="lastName" value={guestDetails.lastName} onChange={handleInputChange} required className="bg-neutral-950 border-white/10 text-white h-12 rounded-none focus:border-orange-500/50 focus:ring-0 transition-colors" />
                       </div>
                    </div>
                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-widest text-neutral-500">Email Address</label>
+                      <label className="text-xs uppercase tracking-widest text-neutral-500">Email Address <span className="text-red-500">*</span></label>
                       <Input name="email" value={guestDetails.email} onChange={handleInputChange} type="email" required className="bg-neutral-950 border-white/10 text-white h-12 rounded-none focus:border-orange-500/50 focus:ring-0 transition-colors" />
                    </div>
                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-widest text-neutral-500">Phone Number</label>
+                      <label className="text-xs uppercase tracking-widest text-neutral-500">Phone Number <span className="text-red-500">*</span></label>
                       <Input name="phone" value={guestDetails.phone} onChange={handleInputChange} type="tel" required className="bg-neutral-950 border-white/10 text-white h-12 rounded-none focus:border-orange-500/50 focus:ring-0 transition-colors" />
                    </div>
                    <div className="space-y-2">
