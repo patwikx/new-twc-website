@@ -6,12 +6,13 @@ import { getUserById, getAllPropertiesChoice, getAllRoles, getAllDepartments } f
 import { redirect } from "next/navigation";
 
 interface EditUserPageProps {
-    params: {
+    params: Promise<{
         id: string;
-    }
+    }>
 }
 
-export default async function EditUserPage({ params }: EditUserPageProps) {
+export default async function EditUserPage(props: EditUserPageProps) {
+  const params = await props.params;
   const user = await getUserById(params.id);
   const allProperties = await getAllPropertiesChoice();
   const roles = await getAllRoles();

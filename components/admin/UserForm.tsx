@@ -215,7 +215,7 @@ export function UserForm({ user, isEditMode = false, allProperties, roles, depar
                          <div className="space-y-2">
                             <Label className="text-neutral-400">Department <span className="text-red-500">*</span></Label>
                             <Select name="departmentId" defaultValue={user?.departmentId || undefined} disabled={isPending}>
-                                <SelectTrigger className="bg-neutral-900/50 border-white/10 text-white">
+                                <SelectTrigger className="bg-neutral-900/50 border-white/10 text-white w-full">
                                     <SelectValue placeholder="Select department" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -229,7 +229,7 @@ export function UserForm({ user, isEditMode = false, allProperties, roles, depar
                         <div className="space-y-2">
                             <Label className="text-neutral-400">System Role <span className="text-red-500">*</span></Label>
                              <Select name="roleId" defaultValue={user?.roleId || undefined} disabled={isPending} required>
-                                <SelectTrigger className="bg-neutral-900/50 border-white/10 text-white">
+                                <SelectTrigger className="bg-neutral-900/50 border-white/10 text-white w-full">
                                     <SelectValue placeholder="Select system role" />
                                 </SelectTrigger>
                                 <SelectContent>

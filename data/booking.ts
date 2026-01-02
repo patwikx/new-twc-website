@@ -68,7 +68,6 @@ export const getBookingById = async (id: string) => {
           }
         },
         property: true,
-        room: true,
         payments: {
           orderBy: {
             createdAt: 'desc'
@@ -109,7 +108,6 @@ export const getBookingByRef = async (shortRef: string) => {
           }
         },
         property: true,
-        room: true,
         payments: {
           orderBy: {
             createdAt: 'desc'

@@ -7,7 +7,8 @@ import { Trash2, ShoppingBag, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { differenceInDays, format } from "date-fns";
-import { TAX_RATE, SERVICE_CHARGE_RATE } from "@/lib/mock-data";
+
+import { getGlobalConfig } from "@/actions/public/properties";
 import { useEffect, useState } from "react";
 import {
   Popover,
@@ -24,14 +25,17 @@ export default function CartPage() {
   
   // Hydration safety
   const [mounted, setMounted] = useState(false);
+  const [config, setConfig] = useState({ taxRate: 0.12, serviceChargeRate: 0.10 });
+
   useEffect(() => {
     setMounted(true);
+    getGlobalConfig().then(c => setConfig(c));
   }, []);
 
   const subtotal = mounted ? getCartSubtotal() : 0;
   const currentItems = mounted ? items : [];
-  const serviceCharge = subtotal * SERVICE_CHARGE_RATE;
-  const taxes = subtotal * TAX_RATE;
+  const serviceCharge = subtotal * config.serviceChargeRate;
+  const taxes = subtotal * config.taxRate;
   const total = subtotal + serviceCharge + taxes;
 
   const toDate = (d: string | Date) => (typeof d === "string" ? new Date(d) : d);
@@ -223,11 +227,11 @@ export default function CartPage() {
                   <span>₱{subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-400">Service Charge ({(SERVICE_CHARGE_RATE * 100).toFixed(0)}%)</span>
+                  <span className="text-neutral-400">Service Charge ({(config.serviceChargeRate * 100).toFixed(0)}%)</span>
                   <span>₱{serviceCharge.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-400">VAT ({(TAX_RATE * 100).toFixed(0)}%)</span>
+                  <span className="text-neutral-400">VAT ({(config.taxRate * 100).toFixed(0)}%)</span>
                   <span>₱{taxes.toLocaleString()}</span>
                 </div>
               </div>

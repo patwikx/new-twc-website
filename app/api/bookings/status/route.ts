@@ -18,7 +18,7 @@ export async function GET(request: Request) {
          payments: {
             where: {
                provider: 'PAYMONGO',
-               paymongoPaymentIntentId: { not: null }
+               externalId: { not: null }
             },
             take: 1,
             orderBy: { createdAt: 'desc' }
@@ -36,8 +36,8 @@ export async function GET(request: Request) {
     }
 
     // Check PayMongo status if currently pending/unpaid and we have a session ID
-    if ((booking.paymentStatus === 'UNPAID') && booking.payments[0]?.paymongoPaymentIntentId) {
-       const sessionId = booking.payments[0].paymongoPaymentIntentId;
+    if ((booking.paymentStatus === 'UNPAID') && booking.payments[0]?.externalId) {
+       const sessionId = booking.payments[0].externalId;
        const session = await getCheckoutSession(sessionId);
 
        if (session && session.attributes.payments && session.attributes.payments.length > 0) {

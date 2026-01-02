@@ -1,4 +1,5 @@
 import { getBookingById, getBookingByRef } from "@/data/booking";
+import { getGlobalConfig } from "@/actions/public/properties";
 import { redirect } from "next/navigation";
 import ConfirmationClient from "./ConfirmationClient";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
   } else if (bookingRef) {
     bookingData = await getBookingByRef(bookingRef);
   }
+
+  const config = await getGlobalConfig();
 
   if (!bookingData) {
     return (
@@ -77,7 +80,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
   return (
     <div className="min-h-screen bg-neutral-950 text-white pt-32 pb-24">
        <div className="container mx-auto px-4">
-          <ConfirmationClient booking={booking} />
+          <ConfirmationClient booking={booking} config={config} />
        </div>
     </div>
   );

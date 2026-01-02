@@ -18,11 +18,19 @@ interface DownloadReceiptButtonProps {
     property?: any;
     totalAmount: any;
   };
+  taxRate?: number;
+  serviceChargeRate?: number;
   className?: string;
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
 }
 
-export function DownloadReceiptButton({ booking, className, variant = "outline" }: DownloadReceiptButtonProps) {
+export function DownloadReceiptButton({ 
+  booking, 
+  className, 
+  variant = "outline",
+  taxRate = 0.12,
+  serviceChargeRate = 0.10
+}: DownloadReceiptButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleDownloadPDF = async () => {
@@ -103,11 +111,25 @@ export function DownloadReceiptButton({ booking, className, variant = "outline" 
         pdf.line(margin, y, pageWidth - margin, y);
         y += 8;
         
+        // Calculate tax/service charge from total for display if not stored on booking items (simplified reverse calc or use stored amounts if available)
+        // For now, we'll display the rates used
+        const serviceAmount = total * (serviceChargeRate / (1 + taxRate + serviceChargeRate));
+        const taxAmount = total * (taxRate / (1 + taxRate + serviceChargeRate));
+        const baseAmount = total - serviceAmount - taxAmount;
+
         // Line Items
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "normal");
         pdf.text(`Room Charges (${nights} nights)`, margin, y);
-        pdf.text(`PHP ${total.toLocaleString()}`, pageWidth - margin, y, { align: "right" });
+        pdf.text(`PHP ${baseAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, pageWidth - margin, y, { align: "right" });
+        y += 6;
+        
+        pdf.text(`Service Charge (${(serviceChargeRate * 100).toFixed(0)}%)`, margin, y);
+        pdf.text(`PHP ${serviceAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, pageWidth - margin, y, { align: "right" });
+        y += 6;
+        
+        pdf.text(`VAT (${(taxRate * 100).toFixed(0)}%)`, margin, y);
+        pdf.text(`PHP ${taxAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, pageWidth - margin, y, { align: "right" });
         
         // Total
         y += 20;

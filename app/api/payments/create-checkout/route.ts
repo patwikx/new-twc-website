@@ -83,9 +83,11 @@ export async function POST(req: NextRequest) {
         currency: booking.currency,
         provider: "PAYMONGO",
         status: "PENDING",
-        paymongoPaymentIntentId: result.sessionId,
-        paymongoCheckoutUrl: result.checkoutUrl,
-        description
+        externalId: result.sessionId,
+        metadata: {
+          checkoutUrl: result.checkoutUrl,
+          description
+        }
       }
     });
 

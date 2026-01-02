@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { getBookingById } from "@/data/booking";
+import { getGlobalConfig } from "@/actions/public/properties";
 import { format } from "date-fns";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -28,7 +29,10 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
   if (!session?.user) redirect("/auth/login");
 
   const resolvedParams = await params;
-  const booking = await getBookingById(resolvedParams.id);
+  const [booking, config] = await Promise.all([
+     getBookingById(resolvedParams.id),
+     getGlobalConfig()
+  ]);
 
   if (!booking) {
     return (
@@ -102,6 +106,8 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
                  {booking.status === 'CONFIRMED' && (
                     <DownloadReceiptButton 
                        booking={booking}
+                       taxRate={config.taxRate}
+                       serviceChargeRate={config.serviceChargeRate}
                        className="border-white/20 text-white hover:bg-white hover:text-black h-12"
                     />
                  )}
@@ -256,7 +262,7 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
                               <div className="flex justify-between items-start mb-2">
                                  <div>
                                     <p className="text-sm font-medium text-white">
-                                       {payment.paymentMethod ? payment.paymentMethod.replace('_', ' ') : 'Payment'}
+                                       Online Payment
                                     </p>
                                     <p className="text-[10px] text-neutral-500 uppercase tracking-widest">
                                        {payment.provider}

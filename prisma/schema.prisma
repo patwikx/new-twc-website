@@ -50,9 +50,14 @@ model User {
     isTwoFactorEnabled    Boolean                @default(false)
     twoFactorConfirmation TwoFactorConfirmation?
 
+    deletedAt DateTime?
+
     createdAt  DateTime   @default(now())
     updatedAt  DateTime   @updatedAt
     properties Property[]
+
+    @@index([email])
+    @@index([role])
 }
 
 model Role {
@@ -204,7 +209,12 @@ model Property {
     image           String // Main hero image
     facebookPageId  String?
 
+    // Configuration
+    taxRate           Decimal @default(0.12) @db.Decimal(5, 4)
+    serviceChargeRate Decimal @default(0.10) @db.Decimal(5, 4)
+
     images    PropertyImage[]
+    policies  PropertyPolicy[]
     rooms     Room[]
     floorPlan FloorPlan?
     amenities PropertyAmenity[] // Many-to-many via explicit table or implicit
@@ -217,6 +227,19 @@ model Property {
     bookings  Booking[]
     user      User?     @relation(fields: [userId], references: [id])
     userId    String?
+}
+
+model PropertyPolicy {
+    id          String   @id @default(uuid())
+    propertyId  String
+    property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+    title       String
+    description String   @db.Text
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([propertyId])
 }
 
 model PropertyImage {
@@ -237,14 +260,67 @@ model Room {
     sizeSqM     Float?
     image       String
 
-    property       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-    amenities      String[] // Array of simple strings for room amenities
-    floorPlan      FloorPlan?
-    bookings       BookingItem[]
-    directBookings Booking[]     @relation("BookingRoom")
+    property  Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+    amenities String[] // Array of simple strings for room amenities
+    floorPlan FloorPlan?
+    bookings  BookingItem[]
+
+    units         RoomUnit[] // Individual room units (101, 102, etc.)
+    seasonalRates SeasonalRate[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([propertyId])
+}
+
+model SeasonalRate {
+    id         String @id @default(uuid())
+    roomTypeId String
+    roomType   Room   @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+    startDate DateTime
+    endDate   DateTime
+
+    adjustmentType String // PERCENTAGE, ABSOLUTE
+    value          Decimal @db.Decimal(10, 2)
+    priority       Int     @default(0) // Higher preference wins
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([roomTypeId])
+    @@index([startDate, endDate])
+}
+
+// Individual room units for inventory management
+model RoomUnit {
+    id         String         @id @default(uuid())
+    roomTypeId String
+    roomType   Room           @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+    number     String // Room number: "101", "102"
+    floor      Int? // Optional floor number
+    status     RoomUnitStatus @default(CLEAN)
+    isActive   Boolean        @default(true)
+    notes      String?        @db.Text
+
+    deletedAt DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    bookingItems BookingItem[]
+
+    @@index([roomTypeId])
+    @@index([status])
+}
+
+enum RoomUnitStatus {
+    CLEAN
+    DIRTY
+    OCCUPIED
+    MAINTENANCE
+    OUT_OF_ORDER
 }
 
 model PropertyAmenity {
@@ -322,17 +398,26 @@ model Booking {
     status        BookingStatus @default(PENDING)
     paymentStatus PaymentStatus @default(UNPAID)
 
-    // Direct room/property reference for quick access
-    roomId     String?
-    room       Room?     @relation("BookingRoom", fields: [roomId], references: [id])
     propertyId String?
     property   Property? @relation(fields: [propertyId], references: [id])
 
-    items    BookingItem[]
-    payments Payment[] // Relation to payments (PayMongo)
+    items       BookingItem[]
+    payments    Payment[]
+    refunds     Refund[]
+    adjustments BookingAdjustment[]
+
+    // Audit & Soft Delete
+    deletedAt   DateTime?
+    createdById String?
+    updatedById String?
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([status])
+    @@index([paymentStatus])
+    @@index([userId])
+    @@index([shortRef])
 }
 
 enum BookingStatus {
@@ -355,35 +440,72 @@ model Payment {
     bookingId String
     amount    Decimal @db.Decimal(10, 2)
     currency  String  @default("PHP")
-    provider  String  @default("PAYMONGO") // PAYMONGO, CASH, etc.
+    provider  String  @default("PAYMONGO")
     status    String // PAID, PENDING, FAILED
 
-    // PayMongo Specifics
-    paymentIntentId         String? @unique // pi_...
-    sourceId                String? // src_...
-    externalId              String? @unique // id from provider (pay_...)
-    paymentMethod           String? // gcash, card, grab_pay
-    paymentProvider         String? // paymongo, cash, etc.
-    paymongoPaymentIntentId String? @unique
-    paymongoPaymentMethodId String?
-    paymongoSourceId        String?
-    paymongoCheckoutUrl     String?
-    paymongoClientKey       String?
-    transactionId           String?
-    referenceNumber         String?
-    description             String?
+    // Consolidated Payment Fields
+    transactionId   String? // Provider's Transaction ID
+    paymentMethodId String?
+    sourceId        String?
+    externalId      String? @unique
 
-    // Timestamps
+    metadata Json?
+
+    // Timestamps & Audit
     paidAt        DateTime?
     failedAt      DateTime?
     failureReason String?
 
-    metadata Json? // Store full raw response from PayMongo
+    deletedAt   DateTime?
+    createdById String?
+    updatedById String?
 
-    booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+    refunds Refund[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([status])
+    @@index([bookingId])
+    @@index([externalId])
+}
+
+model Refund {
+    id        String  @id @default(uuid())
+    bookingId String
+    paymentId String?
+
+    amount Decimal @db.Decimal(10, 2)
+    reason String?
+    status String // PENDING, COMPLETED, FAILED
+
+    processedAt DateTime?
+
+    booking Booking  @relation(fields: [bookingId], references: [id])
+    payment Payment? @relation(fields: [paymentId], references: [id])
+
+    createdAt DateTime @default(now())
+
+    @@index([bookingId])
+}
+
+model BookingAdjustment {
+    id        String  @id @default(uuid())
+    bookingId String
+    booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+    type        String // CHARGE, DISCOUNT
+    amount      Decimal @db.Decimal(10, 2)
+    description String
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    createdById String?
+    updatedById String?
+
+    @@index([bookingId])
 }
 
 model BookingItem {
@@ -398,6 +520,15 @@ model BookingItem {
 
     booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
     room    Room    @relation(fields: [roomId], references: [id])
+
+    // Inventory Assignment
+    roomUnitId String?
+    roomUnit   RoomUnit? @relation(fields: [roomUnitId], references: [id])
+
+    @@index([bookingId])
+    @@index([roomId])
+    @@index([checkIn])
+    @@index([checkOut])
 }
 
 model Coupon {

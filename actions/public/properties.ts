@@ -80,3 +80,14 @@ export async function getRoomByPropertyAndId(propertySlug: string, roomId: strin
     room: property.rooms[0],
   };
 }
+
+export async function getGlobalConfig() {
+  const property = await db.property.findFirst({
+    include: { policies: true }
+  });
+  return {
+    taxRate: property?.taxRate ? Number(property.taxRate) : 0.12,
+    serviceChargeRate: property?.serviceChargeRate ? Number(property.serviceChargeRate) : 0.10,
+    policies: property?.policies.map(p => ({ title: p.title, description: p.description })) || []
+  };
+}

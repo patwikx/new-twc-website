@@ -24,8 +24,9 @@ import {
 const NAV_ITEMS = [
     { title: "Overview", icon: LayoutDashboard, url: "/admin", permission: "analytics:view" },
     { title: "Bookings", icon: CalendarDays, url: "/admin/bookings", permission: "bookings:view" },
+    { title: "Front Desk", icon: BedDouble, url: "/admin/front-desk", permission: "bookings:edit" },
     { title: "Properties", icon: Building2, url: "/admin/properties", permission: "properties:view" },
-    { title: "Rooms", icon: BedDouble, url: "/admin/rooms", permission: "rooms:view" },
+
     { title: "Users", icon: Users, url: "/admin/users", permission: "users:view" },
     { title: "Roles & Permissions", icon: ShieldCheck, url: "/admin/roles", permission: "settings:manage" },
     { title: "Settings", icon: Settings, url: "/admin/settings", permission: "settings:view" },

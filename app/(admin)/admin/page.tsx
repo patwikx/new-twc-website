@@ -4,8 +4,8 @@ import { format } from "date-fns";
 import { hasPermission } from "@/lib/auth-checks";
 import { getCurrentPropertyFilter } from "@/lib/data-access";
 
-// Helper to aggregate revenue by month
-function getMonthlyRevenue(bookings: any[]) {
+// Helper to aggregate revenue by month from items
+function getMonthlyRevenue(items: any[]) {
     const months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -13,9 +13,11 @@ function getMonthlyRevenue(bookings: any[]) {
 
     const chartData = months.map(name => ({ name, total: 0 }));
 
-    bookings.forEach(booking => {
-        const monthIndex = new Date(booking.createdAt).getMonth();
-        chartData[monthIndex].total += Number(booking.totalAmount);
+    items.forEach(item => {
+        const monthIndex = new Date(item.booking.createdAt).getMonth();
+        const days = Math.max(1, Math.ceil((new Date(item.checkOut).getTime() - new Date(item.checkIn).getTime()) / (1000 * 60 * 60 * 24)));
+        const itemTotal = Number(item.pricePerNight) * days;
+        chartData[monthIndex].total += itemTotal;
     });
 
     return chartData;
@@ -23,84 +25,154 @@ function getMonthlyRevenue(bookings: any[]) {
 
 async function getStats() {
     const propertyWhere = await getCurrentPropertyFilter();
-
-    // Mapping property filter (defaults to id) to booking propertyId
-    // propertyWhere might be { id: ... } or { id: { in: ... } }
-    const bookingWhere: any = {};
     
+    // Build filter for Bookings that contain relevant items
+    const bookingFilter: any = {};
+    // Build filter for BookingItems specifically (for revenue)
+    const itemFilter: any = {};
+
     if (propertyWhere.id) {
-        bookingWhere.propertyId = propertyWhere.id;
+        // If propertyWhere.id is an object (like { in: [...] }) or string
+        const propIdFilter = propertyWhere.id;
+        
+        // Filter bookings that have AT LEAST ONE item from this property scope
+        bookingFilter.items = {
+            some: {
+                room: {
+                    propertyId: propIdFilter
+                }
+            }
+        };
+
+        // Filter items that belong to this property scope
+        itemFilter.room = {
+            propertyId: propIdFilter
+        };
     }
 
-    // 1. Counts
-    const bookingCount = await db.booking.count({ where: bookingWhere });
+    // 1. Counts (Unique Bookings)
+    // We count bookings that contain relevant rooms
+    const bookingCount = await db.booking.count({ where: bookingFilter });
     
     const propertyCount = await db.property.count({ where: propertyWhere });
     
     const confirmedCount = await db.booking.count({ 
         where: { 
-            ...bookingWhere, 
+            ...bookingFilter, 
             status: { in: ['CONFIRMED', 'COMPLETED'] } 
         } 
     });
 
     // 2. Revenue (Confirmed or Completed only)
-    const revenueAgg = await db.booking.aggregate({
+    // We fetch ITEMS directly to get precise revenue split
+    const revenueItems = await db.bookingItem.findMany({
         where: {
-            ...bookingWhere,
-            status: { in: ['CONFIRMED', 'COMPLETED'] }
+            ...itemFilter,
+            booking: {
+                status: { in: ['CONFIRMED', 'COMPLETED'] }
+            }
         },
-        _sum: {
-            totalAmount: true
+        select: {
+            pricePerNight: true,
+            checkIn: true,
+            checkOut: true
         }
     });
-    const totalRevenue = Number(revenueAgg._sum.totalAmount || 0);
+
+    const totalRevenue = revenueItems.reduce((acc, item) => {
+        const days = Math.max(1, Math.ceil((new Date(item.checkOut).getTime() - new Date(item.checkIn).getTime()) / (1000 * 60 * 60 * 24)));
+        return acc + (Number(item.pricePerNight) * days);
+    }, 0);
 
     // 3. Recent Sales (Last 5)
+    // Showing bookings that have relevant items. 
+    // displayAmount should reflect the RELEVANT amount for this property view, not total booking amount.
     const recentBookings = await db.booking.findMany({
         where: {
-             ...bookingWhere,
+             ...bookingFilter,
              status: { in: ['CONFIRMED', 'COMPLETED'] }
         },
         orderBy: { createdAt: 'desc' },
         take: 5,
-        include: { user: true } // to get name/email if linked
+        include: { 
+            user: true,
+            items: {
+                where: itemFilter, // Only fetch items relevant to current view
+                include: { room: true }
+            }
+        } 
     });
 
-    const recentSales = recentBookings.map(b => ({
-        id: b.id,
-        name: b.guestFirstName + " " + b.guestLastName,
-        email: b.guestEmail,
-        amount: Number(b.totalAmount),
-        avatar: b.user?.image || undefined
-    }));
+    const recentSales = recentBookings.map(b => {
+        // Calculate relevant total for this dashboard view
+        const relevantTotal = b.items.reduce((acc, item) => {
+             const days = Math.max(1, Math.ceil((new Date(item.checkOut).getTime() - new Date(item.checkIn).getTime()) / (1000 * 60 * 60 * 24)));
+             return acc + (Number(item.pricePerNight) * days);
+        }, 0);
+
+        return {
+            id: b.id,
+            name: b.guestFirstName + " " + b.guestLastName,
+            email: b.guestEmail,
+            amount: relevantTotal,
+            avatar: b.user?.image || undefined
+        };
+    });
 
     // 4. Monthly Chart Data (Current Year)
     const currentYear = new Date().getFullYear();
     const startOfYear = new Date(currentYear, 0, 1);
     const endOfYear = new Date(currentYear, 11, 31);
 
-    const yearlyBookings = await db.booking.findMany({
+    // Fetch items for chart
+    const yearlyItems = await db.bookingItem.findMany({
         where: {
-            ...bookingWhere,
-            status: { in: ['CONFIRMED', 'COMPLETED'] },
-            createdAt: {
-                gte: startOfYear,
-                lte: endOfYear
+            ...itemFilter,
+            booking: {
+                status: { in: ['CONFIRMED', 'COMPLETED'] },
+                createdAt: {
+                    gte: startOfYear,
+                    lte: endOfYear
+                }
             }
         },
         select: {
-            createdAt: true,
-            totalAmount: true
+            pricePerNight: true,
+            checkIn: true,
+            checkOut: true,
+            bookingId: true,
+            booking: {
+                select: { createdAt: true }
+            }
         }
     });
 
-    const chartData = getMonthlyRevenue(yearlyBookings);
+    const chartData = getMonthlyRevenue(yearlyItems);
     
     // Calculate sales count for "Recent Sales" card text (this month)
-    const thisMonthSalesCount = yearlyBookings.filter(b => 
-        new Date(b.createdAt).getMonth() === new Date().getMonth()
-    ).length;
+    const thisMonthSalesCount = yearlyItems.filter(item => 
+        new Date(item.booking.createdAt).getMonth() === new Date().getMonth()
+    ).length; // Note: This counts ITEMS sold, which might be higher than bookings. 
+    // To match legacy "Sales" count (Bookings), we should count unique bookings.
+    
+    const thisMonthUniqueBookings = new Set(yearlyItems.filter(item => 
+        new Date(item.booking.createdAt).getMonth() === new Date().getMonth()
+    ).map(i => (i as any).bookingId)).size;
+    // Note: bookingId isn't selected above, let's add it if we want strict count, 
+    // or just assume 'sales' text can mean 'bookings' roughly. 
+    // Let's improve the query above to include bookingId for distinct count.
+
+    // Correction: Let's simpler fetch for the count to be accurate
+    const thisMonthBookingCount = await db.booking.count({
+        where: {
+            ...bookingFilter,
+            status: { in: ['CONFIRMED', 'COMPLETED'] },
+            createdAt: {
+                gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+                lte: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
+            }
+        }
+    });
 
 
   return {
@@ -110,7 +182,7 @@ async function getStats() {
     totalRevenue,
     recentSales,
     chartData,
-    thisMonthSalesCount
+    thisMonthSalesCount: thisMonthBookingCount
   };
 }
 
