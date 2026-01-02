@@ -1,18 +1,30 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Room, Property } from "@/lib/mock-data";
+import { toNumber } from "@/lib/types";
 import { useCartStore } from "@/store/useCartStore";
 import { Users, ShoppingCart, Check } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { addDays } from "date-fns";
-
+import { Prisma } from "@prisma/client";
 
 interface RoomCardProps {
-  room: Room;
-  property: Property;
+  room: {
+    id: string;
+    name: string;
+    description: string;
+    price: Prisma.Decimal | number;
+    capacity: number;
+    image: string;
+    amenities: string[];
+  };
+  property: {
+    slug: string;
+    name: string;
+    image: string;
+  };
 }
 
 export function RoomCard({ room, property }: RoomCardProps) {
@@ -27,7 +39,12 @@ export function RoomCard({ room, property }: RoomCardProps) {
   const handleSelectRoom = () => {
     addToCart({
       propertySlug: property.slug,
+      propertyName: property.name,
+      propertyImage: property.image,
       roomId: room.id,
+      roomName: room.name,
+      roomImage: room.image,
+      roomPrice: toNumber(room.price),
       checkIn: new Date(),
       checkOut: addDays(new Date(), 1),
       guests: 2,
@@ -50,7 +67,7 @@ export function RoomCard({ room, property }: RoomCardProps) {
         <div className="flex justify-between items-start">
           <h3 className="text-xl font-semibold">{room.name}</h3>
           <div className="text-right">
-            <span className="block font-bold">₱{room.price.toLocaleString()}</span>
+            <span className="block font-bold">₱{toNumber(room.price).toLocaleString()}</span>
             <span className="text-xs text-muted-foreground">per night</span>
           </div>
         </div>

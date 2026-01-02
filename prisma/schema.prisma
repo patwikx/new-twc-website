@@ -32,6 +32,17 @@ model User {
     reviews   Review[]
     analytics AnalyticsEvent[]
 
+    // Business Unit / Property Management
+    managedProperties Property[] @relation("PropertyManagers")
+    defaultPropertyId String?
+
+    // Custom RBAC & Organization
+    roleId       String?
+    userRole     Role?       @relation(fields: [roleId], references: [id])
+    departmentId String?
+    department   Department? @relation(fields: [departmentId], references: [id])
+    status       String      @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+
     // Membership & Preferences
     membership  Membership?
     preferences UserPreferences?
@@ -39,6 +50,29 @@ model User {
     isTwoFactorEnabled    Boolean                @default(false)
     twoFactorConfirmation TwoFactorConfirmation?
 
+    createdAt  DateTime   @default(now())
+    updatedAt  DateTime   @updatedAt
+    properties Property[]
+}
+
+model Role {
+    id          String  @id @default(uuid())
+    name        String  @unique // e.g. "Admin", "Manager", "Guest"
+    description String?
+    isSystem    Boolean @default(false) // If true, cannot be deleted (e.g. Super Admin)
+
+    // Permissions stored as String list of keys e.g. ["users:view", "bookings:edit"]
+    permissions String[]
+
+    users     User[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Department {
+    id        String   @id @default(uuid())
+    name      String   @unique
+    users     User[]
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 }
@@ -176,9 +210,13 @@ model Property {
     amenities PropertyAmenity[] // Many-to-many via explicit table or implicit
     reviews   Review[]
 
+    managers User[] @relation("PropertyManagers")
+
     createdAt DateTime  @default(now())
     updatedAt DateTime  @updatedAt
     bookings  Booking[]
+    user      User?     @relation(fields: [userId], references: [id])
+    userId    String?
 }
 
 model PropertyImage {

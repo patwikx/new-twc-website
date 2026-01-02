@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { PROPERTIES, LOCAL_EXPERIENCES } from "@/lib/mock-data"; // Assuming these are sufficient for context
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -49,13 +49,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ reply: "Configuration Error: Gemini API Key is missing." }, { status: 500 });
     }
 
+    // Fetch properties and experiences from database
+    const [properties, experiences] = await Promise.all([
+      db.property.findMany({
+        include: { rooms: true },
+        orderBy: { name: "asc" },
+      }),
+      db.experience.findMany({
+        orderBy: { title: "asc" },
+      }),
+    ]);
+
     // Build condensed property summaries to reduce token usage
-    const propertySummaries = PROPERTIES.map(p => 
-      `${p.name} (${p.location}): ${p.rooms.length} rooms from ₱${Math.min(...p.rooms.map(r => r.price)).toLocaleString()} to ₱${Math.max(...p.rooms.map(r => r.price)).toLocaleString()}/night. Rooms: ${p.rooms.map(r => `${r.name} (₱${r.price.toLocaleString()}, ${r.capacity} guests)`).join(', ')}.`
+    const propertySummaries = properties.map(p => 
+      `${p.name} (${p.location}): ${p.rooms.length} rooms from ₱${Math.min(...p.rooms.map(r => Number(r.price))).toLocaleString()} to ₱${Math.max(...p.rooms.map(r => Number(r.price))).toLocaleString()}/night. Rooms: ${p.rooms.map(r => `${r.name} (₱${Number(r.price).toLocaleString()}, ${r.capacity} guests)`).join(', ')}.`
     ).join('\n');
 
-    const experienceSummaries = LOCAL_EXPERIENCES.map(e => 
-      `${e.title} (${e.category}): ${e.description} - ${e.distance}`
+    const experienceSummaries = experiences.map(e => 
+      `${e.title} (${e.category}): ${e.description} - ${e.distance || 'nearby'}`
     ).join('\n');
 
     // Context Construction - Optimized for fewer tokens
@@ -96,3 +107,4 @@ User asks: ${message}
     return NextResponse.json({ reply: "I'm having trouble connecting right now. Please try again later." }, { status: 500 });
   }
 }
+

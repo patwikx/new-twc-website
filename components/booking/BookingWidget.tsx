@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { addDays } from "date-fns";
-import { PROPERTIES } from "@/lib/mock-data";
 import { useCartStore } from "@/store/useCartStore";
 import { DateRangePicker } from "./DateRangePicker";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,26 @@ import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
-export function BookingWidget() {
+// Props interface for receiving database properties
+interface PropertyForBooking {
+  id: string;
+  name: string;
+  slug: string;
+  image: string;
+  rooms: {
+    id: string;
+    name: string;
+    image: string;
+    price: number;
+    capacity: number;
+  }[];
+}
+
+interface BookingWidgetProps {
+  properties: PropertyForBooking[];
+}
+
+export function BookingWidget({ properties }: BookingWidgetProps) {
   const [date, setDate] = useState<DateRange | undefined>({
     from: new Date(),
     to: addDays(new Date(), 3),
@@ -31,9 +49,9 @@ export function BookingWidget() {
   const handleSearch = () => {
     setIsSearching(true);
     setAvailability(null);
-    // Mock API call
+    // Mock API call - in real app, this would check availability
     setTimeout(() => {
-      const property = PROPERTIES.find((p) => p.id === selectedProperty);
+      const property = properties.find((p) => p.id === selectedProperty);
       if (property) {
         setAvailability(property.rooms); // Return all rooms as "available" for now
       }
@@ -76,7 +94,7 @@ export function BookingWidget() {
                         position="popper" 
                         sideOffset={0}
                     >
-                        {PROPERTIES.map((prop) => (
+                        {properties.map((prop) => (
                             <SelectItem key={prop.id} value={prop.id} className="focus:bg-white/10 focus:text-white cursor-pointer py-3 pl-6 rounded-none font-serif text-lg border-b border-white/5 last:border-0 hover:pl-8 transition-all duration-300">
                                 {prop.name}
                             </SelectItem>
@@ -152,13 +170,13 @@ export function BookingWidget() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {availability.map((room) => {
-                 const propertySlug = PROPERTIES.find(p => p.id === selectedProperty)?.slug;
-                 if (!propertySlug) return null;
+                 const property = properties.find(p => p.id === selectedProperty);
+                 if (!property) return null;
 
                  return (
                      <div key={room.id} className="relative group/card h-full">
                     <Link 
-                       href={`/properties/${propertySlug}/rooms/${room.id}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
+                       href={`/properties/${property.slug}/rooms/${room.id}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
                        className="block h-full"
                     >
                      <div className="group relative rounded-none overflow-hidden cursor-pointer h-full">
@@ -187,10 +205,15 @@ export function BookingWidget() {
                                         y: rect.top + rect.height / 2,
                                       });
 
-                                      // Add to cart
+                                      // Add to cart with all required details
                                       useCartStore.getState().addToCart({
-                                        propertySlug: propertySlug,
+                                        propertySlug: property.slug,
+                                        propertyName: property.name,
+                                        propertyImage: property.image,
                                         roomId: room.id,
+                                        roomName: room.name,
+                                        roomImage: room.image,
+                                        roomPrice: room.price,
                                         checkIn: date?.from || new Date(),
                                         checkOut: date?.to || addDays(new Date(), 1),
                                         guests: parseInt(guests),
@@ -220,3 +243,4 @@ export function BookingWidget() {
     </div>
   );
 }
+

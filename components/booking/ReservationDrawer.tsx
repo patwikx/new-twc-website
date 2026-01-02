@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 
 export function ReservationDrawer({ children }: { children?: React.ReactNode }) {
-  const { items, removeFromCart, getCartSubtotal, toggleDrawer, isDrawerOpen, setDrawerOpen, getItemDetails } = useCartStore();
+  const { items, removeFromCart, getCartSubtotal, toggleDrawer, isDrawerOpen, setDrawerOpen } = useCartStore();
   const subtotal = getCartSubtotal();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -57,26 +57,29 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
             <div className="flex-1 overflow-y-auto">
               <div className="p-6 space-y-6">
                 {items.map((item) => {
-                  const details = getItemDetails(item);
-                  if (!details) return null;
-                  const { room, property } = details;
                   const days = (new Date(item.checkOut).getTime() - new Date(item.checkIn).getTime()) / (1000 * 3600 * 24);
 
                   return (
                     <div key={item.id} className="group relative flex gap-4 animate-in fade-in slide-in-from-right-4 duration-500">
                       {/* Tiny Image Thumbnail */}
                       <div className="relative w-20 h-24 flex-shrink-0 bg-neutral-800 border border-white/10">
-                          <Image 
-                             src={room.image} 
-                             alt={room.name} 
-                             fill 
-                             className="object-cover opacity-70 group-hover:opacity-100 transition-opacity"
-                          />
+                          {item.roomImage ? (
+                            <Image 
+                               src={item.roomImage} 
+                               alt={item.roomName || "Room"} 
+                               fill 
+                               className="object-cover opacity-70 group-hover:opacity-100 transition-opacity"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">
+                              No Image
+                            </div>
+                          )}
                       </div>
                       
                       <div className="flex-1 space-y-2">
                         <div className="flex justify-between items-start">
-                          <h4 className="font-serif text-lg leading-tight tracking-tight break-words pr-2">{room.name}</h4>
+                          <h4 className="font-serif text-lg leading-tight tracking-tight break-words pr-2">{item.roomName}</h4>
                           <button 
                             onClick={() => removeFromCart(item.id)}
                             className="text-neutral-500 hover:text-white transition-colors"
@@ -87,7 +90,7 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                         
                         <div className="space-y-1">
                             <p className="text-xs text-orange-500 uppercase tracking-wider font-medium">
-                                {property.name}
+                                {item.propertyName}
                             </p>
                             <div className="flex items-center gap-2 text-xs text-neutral-400">
                                 <Calendar className="w-3 h-3" />
@@ -101,7 +104,7 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                             </div>
                         </div>
                         
-                        <p className="text-sm font-medium pt-1">₱{(room.price * days).toLocaleString()}</p>
+                        <p className="text-sm font-medium pt-1">₱{(item.roomPrice * days).toLocaleString()}</p>
                       </div>
                     </div>
                   );
@@ -165,3 +168,4 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
     </Sheet>
   );
 }
+

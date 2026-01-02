@@ -1,25 +1,43 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { PROPERTIES, Room, Property } from "@/lib/mock-data";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 
+// Cart item now stores all necessary details to avoid database lookups
 export interface CartItem {
   id: string; // Unique cart item ID
   propertySlug: string;
+  propertyName: string;
+  propertyImage: string;
   roomId: string;
+  roomName: string;
+  roomImage: string;
+  roomPrice: number;
   checkIn: Date | string; // Date or ISO string for persistence
   checkOut: Date | string;
   guests: number;
 }
 
+// Simplified types for cart item creation
+export interface AddToCartPayload {
+  propertySlug: string;
+  propertyName: string;
+  propertyImage: string;
+  roomId: string;
+  roomName: string;
+  roomImage: string;
+  roomPrice: number;
+  checkIn: Date;
+  checkOut: Date;
+  guests: number;
+}
+
 interface CartStore {
   items: CartItem[];
-  addToCart: (item: Omit<CartItem, "id">) => void;
+  addToCart: (item: AddToCartPayload) => void;
   removeFromCart: (id: string) => void;
-  updateItem: (id: string, updates: Partial<Omit<CartItem, "id">>) => void;
+  updateItem: (id: string, updates: Partial<Pick<CartItem, 'checkIn' | 'checkOut' | 'guests'>>) => void;
   clearCart: () => void;
-  getItemDetails: (item: CartItem) => { property: Property; room: Room } | null;
   getCartSubtotal: () => number;
   itemCount: number;
   isDrawerOpen: boolean;
@@ -81,25 +99,14 @@ export const useCartStore = create<CartStore>()(
         set({ items: [] });
       },
 
-      getItemDetails: (item) => {
-        const property = PROPERTIES.find((p) => p.slug === item.propertySlug);
-        if (!property) return null;
-        const room = property.rooms.find((r) => r.id === item.roomId);
-        if (!room) return null;
-        return { property, room };
-      },
-
       getCartSubtotal: () => {
-        const { items, getItemDetails } = get();
+        const { items } = get();
         return items.reduce((total, item) => {
-          const details = getItemDetails(item);
-          if (!details) return total;
-          
           const start = typeof item.checkIn === 'string' ? new Date(item.checkIn) : item.checkIn;
           const end = typeof item.checkOut === 'string' ? new Date(item.checkOut) : item.checkOut;
           
           const nights = Math.max(1, differenceInDays(end, start));
-          return total + details.room.price * nights;
+          return total + item.roomPrice * nights;
         }, 0);
       },
 
@@ -118,3 +125,4 @@ export const useCartStore = create<CartStore>()(
     }
   )
 );
+

@@ -39,10 +39,15 @@ export const login = async (values: z.infer<typeof LoginSchema>) => {
   }
 
   try {
+    // Conditional Redirect based on role
+    const redirectTo = (existingUser.role === "ADMIN" || existingUser.role === "STAFF")
+        ? "/admin" 
+        : DEFAULT_LOGIN_REDIRECT;
+
     await signIn("credentials", {
       email,
       password,
-      redirectTo: DEFAULT_LOGIN_REDIRECT,
+      redirectTo,
     });
   } catch (error) {
     if (error instanceof AuthError) {
