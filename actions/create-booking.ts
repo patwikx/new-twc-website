@@ -133,7 +133,6 @@ export async function createBooking(
         currency: "PHP",
         status: "PENDING",
         paymentStatus: "UNPAID",
-        roomId: firstRoom?.id,
         propertyId: firstRoom?.propertyId,
         items: {
           create: bookingItems.map(item => ({

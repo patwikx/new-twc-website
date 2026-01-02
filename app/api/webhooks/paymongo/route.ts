@@ -218,7 +218,6 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: { 
-        room: true,
         property: true,
         items: true
       }
@@ -236,7 +235,7 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
     let payment = await prisma.payment.findFirst({
       where: {
         bookingId: booking.id,
-        paymongoPaymentIntentId: paymentIntentId || checkoutSessionId
+        externalId: paymentIntentId || checkoutSessionId
       }
     });
 
@@ -247,17 +246,17 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
           bookingId: booking.id,
           amount: totalAmount,
           currency: typedSessionData.line_items[0]?.currency?.toUpperCase() || 'PHP',
-          paymentMethod: 'CREDIT_CARD',
-          paymentProvider: 'paymongo',
-          paymongoPaymentIntentId: paymentIntentId || checkoutSessionId,
-          paymongoCheckoutUrl: typedSessionData.checkout_url,
-          paymongoClientKey: typedSessionData.client_key,
+          // provider: 'PAYMONGO',
+          externalId: paymentIntentId || checkoutSessionId,
           status: 'PENDING',
-          description: `Payment for booking ${booking.shortRef}`,
+          // description: `Payment for booking ${booking.shortRef}`,
           metadata: serializeForPrismaJson({
             checkout_session_id: checkoutSessionId,
             line_items: typedSessionData.line_items,
-            booking_number: booking.shortRef
+            booking_number: booking.shortRef,
+            paymongo_checkout_url: typedSessionData.checkout_url,
+            paymongo_client_key: typedSessionData.client_key,
+            description: `Payment for booking ${booking.shortRef}`
           })
         }
       });
@@ -268,7 +267,7 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
       status: 'PAID';
       paidAt: Date;
       metadata?: Prisma.InputJsonValue;
-      paymentMethod?: 'CREDIT_CARD' | 'GCASH' | 'PAYMAYA' | 'GRAB_PAY';
+
       transactionId?: string;
     } = {
       status: 'PAID',
@@ -279,24 +278,13 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
         processed_at: new Date().toISOString()
       })
     };
-
+    
     // Process payment intent details if available
     if (paymentIntent && isPaymentIntentData(paymentIntent.attributes)) {
       const paymentDetails = getPaymentDetails(paymentIntent.attributes);
       
       if (paymentDetails) {
-        const source = getSourceDetails(paymentDetails);
-        const paymentMethod = getPaymentMethodForDB(source);
-        
-        // Map payment method
-        if (paymentMethod === 'CARD') {
-          updateData.paymentMethod = 'CREDIT_CARD';
-        } else if (paymentMethod === 'E_WALLET') {
-          const sourceType = source?.type?.toLowerCase();
-          if (sourceType === 'gcash') updateData.paymentMethod = 'GCASH';
-          else if (sourceType === 'paymaya') updateData.paymentMethod = 'PAYMAYA';
-          else if (sourceType === 'grab_pay') updateData.paymentMethod = 'GRAB_PAY';
-        }
+        // const source = getSourceDetails(paymentDetails);
         
         updateData.transactionId = paymentIntent.id;
         
@@ -304,9 +292,8 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
         await prisma.payment.update({
           where: { id: payment.id },
           data: {
-            paymongoPaymentMethodId: paymentIntent.attributes.payment_method?.id,
-            paymongoSourceId: paymentIntent.attributes.source?.id,
-            referenceNumber: paymentIntent.attributes.source?.id
+            paymentMethodId: paymentIntent.attributes.payment_method?.id,
+            sourceId: paymentIntent.attributes.source?.id
           }
         });
       }
@@ -399,7 +386,7 @@ async function handleCheckoutSessionFailed(event: WebhookEvent, webhookEventId: 
     const payment = await prisma.payment.findFirst({
       where: {
         bookingId: bookingId,
-        paymongoPaymentIntentId: event.data.attributes.data.id
+        externalId: event.data.attributes.data.id
       }
     });
 
@@ -446,7 +433,7 @@ async function handlePaymentIntentSuccess(event: WebhookEvent, webhookEventId: s
     
     // Find existing payment by PayMongo payment intent ID
     const payment = await prisma.payment.findFirst({
-      where: { paymongoPaymentIntentId: paymentIntentId },
+      where: { externalId: paymentIntentId },
       include: { booking: true }
     });
 
@@ -490,7 +477,7 @@ async function handlePaymentIntentFailed(event: WebhookEvent, webhookEventId: st
       
       // Find existing payment
       const payment = await prisma.payment.findFirst({
-        where: { paymongoPaymentIntentId: paymentIntentId }
+        where: { externalId: paymentIntentId }
       });
 
       if (payment) {

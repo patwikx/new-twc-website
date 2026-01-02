@@ -16,6 +16,8 @@ interface BookingInvoiceProps {
   tax: number;
   serviceCharge: number;
   total: number;
+  taxRate?: number;
+  serviceChargeRate?: number;
 }
 
 export function BookingInvoice({
@@ -33,7 +35,10 @@ export function BookingInvoice({
   discount,
   tax,
   serviceCharge,
+
   total,
+  taxRate = 0.12,
+  serviceChargeRate = 0.10,
 }: BookingInvoiceProps) {
   return (
     <div id="booking-invoice" style={{ backgroundColor: '#ffffff', color: '#000000', padding: '48px', maxWidth: '800px', margin: '0 auto', fontFamily: 'serif' }}>
@@ -93,11 +98,11 @@ export function BookingInvoice({
             </tr>
           )}
           <tr style={{ borderBottom: '1px solid #e0e0e0' }}>
-            <td style={{ padding: '16px 0', fontSize: '14px' }}>Service Charge (10%)</td>
+            <td style={{ padding: '16px 0', fontSize: '14px' }}>Service Charge ({(serviceChargeRate * 100).toFixed(0)}%)</td>
             <td style={{ padding: '16px 0', textAlign: 'right', fontSize: '14px' }}>₱{serviceCharge.toLocaleString()}</td>
           </tr>
            <tr style={{ borderBottom: '2px solid #000000' }}>
-            <td style={{ padding: '16px 0', fontSize: '14px' }}>VAT (12%)</td>
+            <td style={{ padding: '16px 0', fontSize: '14px' }}>VAT ({(taxRate * 100).toFixed(0)}%)</td>
             <td style={{ padding: '16px 0', textAlign: 'right', fontSize: '14px' }}>₱{tax.toLocaleString()}</td>
           </tr>
         </tbody>

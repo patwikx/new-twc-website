@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FloorPlanHotspot } from "@/lib/mock-data";
 import Image from "next/image";
 import { 
   Building2, 
@@ -19,13 +18,24 @@ import {
   Maximize
 } from "lucide-react";
 
+type HotspotType = "room" | "pool" | "restaurant" | "spa" | "lobby" | "gym" | "beach" | "bed" | "bath" | "balcony" | "living";
+
+interface Hotspot {
+  id: string;
+  label: string;
+  type: string;
+  description: string | null;
+  x: number;
+  y: number;
+}
+
 interface FloorPlanViewerProps {
   image: string;
-  hotspots: FloorPlanHotspot[];
+  hotspots: Hotspot[];
   propertyName: string;
 }
 
-const iconMap: Record<FloorPlanHotspot["type"], React.ReactNode> = {
+const iconMap: Record<HotspotType, React.ReactNode> = {
   lobby: <Building2 className="h-4 w-4" />,
   restaurant: <UtensilsCrossed className="h-4 w-4" />,
   gym: <Dumbbell className="h-4 w-4" />,
@@ -39,7 +49,7 @@ const iconMap: Record<FloorPlanHotspot["type"], React.ReactNode> = {
   living: <Armchair className="h-4 w-4" />,
 };
 
-const colorMap: Record<FloorPlanHotspot["type"], string> = {
+const colorMap: Record<HotspotType, string> = {
   lobby: "bg-amber-500",
   restaurant: "bg-rose-500",
   gym: "bg-blue-500",
@@ -54,7 +64,7 @@ const colorMap: Record<FloorPlanHotspot["type"], string> = {
 };
 
 export function FloorPlanViewer({ image, hotspots, propertyName }: FloorPlanViewerProps) {
-  const [activeHotspot, setActiveHotspot] = useState<FloorPlanHotspot | null>(null);
+  const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
 
   return (
@@ -63,7 +73,7 @@ export function FloorPlanViewer({ image, hotspots, propertyName }: FloorPlanView
       <div className="flex flex-wrap gap-4 mb-6 justify-center">
         {Array.from(new Set(hotspots.map(h => h.type))).map((type) => (
           <div key={type} className="flex items-center gap-2 text-xs text-neutral-400">
-            <span className={`w-3 h-3 rounded-full ${colorMap[type]}`} />
+            <span className={`w-3 h-3 rounded-full ${colorMap[type as HotspotType] || 'bg-neutral-500'}`} />
             <span className="capitalize">{type}</span>
           </div>
         ))}
@@ -93,10 +103,10 @@ export function FloorPlanViewer({ image, hotspots, propertyName }: FloorPlanView
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.1 }}
-            className={`absolute z-10 w-8 h-8 rounded-full ${colorMap[hotspot.type]} flex items-center justify-center text-white shadow-lg hover:scale-125 transition-transform cursor-pointer`}
+            className={`absolute z-10 w-8 h-8 rounded-full ${colorMap[hotspot.type as HotspotType] || 'bg-neutral-500'} flex items-center justify-center text-white shadow-lg hover:scale-125 transition-transform cursor-pointer`}
             style={{
-              left: `${hotspot.position.x}%`,
-              top: `${hotspot.position.y}%`,
+              left: `${hotspot.x}%`,
+              top: `${hotspot.y}%`,
               transform: "translate(-50%, -50%)",
             }}
             onClick={(e) => {
@@ -105,10 +115,10 @@ export function FloorPlanViewer({ image, hotspots, propertyName }: FloorPlanView
             }}
             aria-label={hotspot.label}
           >
-            {iconMap[hotspot.type]}
+            {iconMap[hotspot.type as HotspotType] || null}
             
             {/* Pulse Animation */}
-            <span className={`absolute inset-0 rounded-full ${colorMap[hotspot.type]} animate-ping opacity-50`} />
+            <span className={`absolute inset-0 rounded-full ${colorMap[hotspot.type as HotspotType] || 'bg-neutral-500'} animate-ping opacity-50`} />
           </motion.button>
         ))}
 
@@ -132,8 +142,8 @@ export function FloorPlanViewer({ image, hotspots, propertyName }: FloorPlanView
               </button>
               
               <div className="flex items-center gap-3 mb-3">
-                <span className={`w-8 h-8 rounded-full ${colorMap[activeHotspot.type]} flex items-center justify-center text-white`}>
-                  {iconMap[activeHotspot.type]}
+                <span className={`w-8 h-8 rounded-full ${colorMap[activeHotspot.type as HotspotType] || 'bg-neutral-500'} flex items-center justify-center text-white`}>
+                  {iconMap[activeHotspot.type as HotspotType] || null}
                 </span>
                 <div>
                   <h4 className="font-medium text-white">{activeHotspot.label}</h4>

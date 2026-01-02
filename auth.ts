@@ -45,9 +45,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.sub;
       }
 
+      if (token.role && session.user) {
+        session.user.role = token.role as "ADMIN" | "STAFF" | "GUEST";
+      }
+
       return session;
     },
     async jwt({ token }) {
+      if (!token.sub) return token;
+
+      const existingUser = await getUserByEmail(token.email!); // Or findById if email is unreliable in token
+      if (!existingUser) return token;
+
+      token.role = existingUser.role;
+
       return token;
     }
   },

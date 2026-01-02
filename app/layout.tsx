@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Montserrat } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
-import { GlobalChatWidget } from "@/components/chat/GlobalChatWidget";
 import { Toaster } from "@/components/ui/sonner";
-import { ScrollToTop } from "@/components/layout/ScrollToTop";
+import { AuthProvider } from "@/components/providers/session-provider";
+import { auth } from "@/auth";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -24,11 +22,6 @@ export const metadata: Metadata = {
   description: "Award-winning hotels and resorts worldwide.",
 };
 
-import { AuthProvider } from "@/components/providers/session-provider";
-import { auth } from "@/auth";
-
-// ... imports
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -42,14 +35,8 @@ export default async function RootLayout({
         <body
           className={`${cormorant.variable} ${montserrat.variable} font-sans antialiased min-h-screen flex flex-col bg-neutral-950 text-neutral-50 selection:bg-orange-500/30`}
         >
-          <ScrollToTop />
-          <Navbar />
-          <main className="flex-1">
-            {children}
-          </main>
-          <Footer />
-          <GlobalChatWidget />
-          <Toaster />
+          {children}
+          <Toaster position="bottom-center" />
         </body>
       </html>
     </AuthProvider>
