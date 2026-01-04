@@ -3,7 +3,13 @@ import { PropertiesTable } from "@/components/admin/properties-table";
 
 export default async function AdminPropertiesPage() {
   const properties = await db.property.findMany({
-    include: { _count: { select: { rooms: true } } }
+    select: {
+      id: true,
+      name: true,
+      location: true,
+      image: true,
+      _count: { select: { rooms: true } }
+    }
   });
 
   return (

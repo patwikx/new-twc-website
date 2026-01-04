@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, CouponType, MembershipTier } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedUnits } from "./seed-units";
 
 const prisma = new PrismaClient();
 
@@ -345,6 +346,39 @@ async function main() {
     });
   }
   console.log(`   ✅ ${COUPONS.length} coupons created.\n`);
+
+  // -------------------------------------------------------------------------
+  // 7. UNITS OF MEASURE
+  // -------------------------------------------------------------------------
+  console.log("📏 Seeding Units of Measure...");
+  await seedUnits();
+  console.log(`   ✅ Units of measure created.\n`);
+
+  // -------------------------------------------------------------------------
+  // 8. STOCK CATEGORIES
+  // -------------------------------------------------------------------------
+  console.log("📦 Seeding Stock Categories...");
+  const STOCK_CATEGORIES = [
+    { name: "Ingredient", description: "Food and beverage ingredients", color: "orange", isSystem: true },
+    { name: "Linen", description: "Bed sheets, towels, and linens", color: "blue", isSystem: true },
+    { name: "Consumable", description: "Cleaning supplies and disposables", color: "green", isSystem: true },
+    { name: "Consignment", description: "Supplier-owned items for resale", color: "purple", isSystem: true },
+    { name: "Equipment", description: "Tools and equipment", color: "cyan", isSystem: true },
+  ];
+  for (const cat of STOCK_CATEGORIES) {
+    await prisma.stockCategory.upsert({
+      where: { name: cat.name },
+      update: { description: cat.description, color: cat.color },
+      create: {
+        name: cat.name,
+        description: cat.description,
+        color: cat.color,
+        isSystem: cat.isSystem,
+        isActive: true,
+      },
+    });
+  }
+  console.log(`   ✅ ${STOCK_CATEGORIES.length} stock categories created.\n`);
 
   // -------------------------------------------------------------------------
   // DONE

@@ -1,11 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createPayMongoCheckoutSession } from "@/lib/paymongo";
+import { checkLimit } from "@/lib/rate-limit";
+import { auth } from "@/auth";
+import { validateVerificationToken, deleteVerificationTokensForBooking } from "@/lib/booking/verification-token";
+import { verifyBookingAmount } from "@/lib/booking/price-verification";
+
+// Rate limit configuration for checkout endpoint
+const CHECKOUT_RATE_LIMIT = {
+  limit: 3,
+  windowMs: 60 * 1000, // 60 seconds
+  keyPrefix: 'checkout'
+};
+
+/**
+ * Extract client IP from request headers
+ */
+function getClientIP(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp;
+  }
+  return 'unknown';
+}
 
 export async function POST(req: NextRequest) {
   try {
+    // Rate limiting check
+    const clientIP = getClientIP(req);
+    const rateLimitResult = await checkLimit(clientIP, CHECKOUT_RATE_LIMIT);
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': String(rateLimitResult.retryAfter || 60)
+          }
+        }
+      );
+    }
+
     const body = await req.json();
-    const { bookingId } = body;
+    const { bookingId, verificationToken } = body;
 
     if (!bookingId) {
       return NextResponse.json(
@@ -29,16 +71,79 @@ export async function POST(req: NextRequest) {
     });
 
     if (!booking) {
+      // Generic error to prevent information leakage
       return NextResponse.json(
-        { error: "Booking not found" },
-        { status: 404 }
+        { error: "Unable to process request. Please try again." },
+        { status: 403 }
       );
+    }
+
+    // Ownership verification
+    const session = await auth();
+    
+    if (session?.user?.email) {
+      // Authenticated user: verify email matches booking
+      if (session.user.email.toLowerCase() !== booking.guestEmail.toLowerCase()) {
+        return NextResponse.json(
+          { error: "Unable to process request. Please try again." },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Guest user: require valid verification token
+      if (!verificationToken) {
+        return NextResponse.json(
+          { error: "Unable to process request. Please try again." },
+          { status: 403 }
+        );
+      }
+      
+      const tokenValidation = await validateVerificationToken(verificationToken);
+      
+      if (!tokenValidation.valid) {
+        return NextResponse.json(
+          { error: tokenValidation.expired 
+            ? "Your session has expired. Please start a new booking." 
+            : "Unable to process request. Please try again." 
+          },
+          { status: 403 }
+        );
+      }
+      
+      // Verify token belongs to this booking
+      if (tokenValidation.bookingId !== bookingId) {
+        return NextResponse.json(
+          { error: "Unable to process request. Please try again." },
+          { status: 403 }
+        );
+      }
     }
 
     if (booking.paymentStatus === "PAID") {
       return NextResponse.json(
         { error: "Booking is already paid" },
         { status: 400 }
+      );
+    }
+
+    // Price verification - ensure booking total matches current room prices
+    const priceVerification = await verifyBookingAmount(bookingId);
+    
+    if (!priceVerification.valid) {
+      console.warn("Price mismatch detected", {
+        bookingId,
+        storedTotal: priceVerification.storedTotal,
+        calculatedTotal: priceVerification.calculatedTotal,
+        percentageDiff: priceVerification.percentageDiff,
+        reason: priceVerification.reason
+      });
+      
+      return NextResponse.json(
+        { 
+          error: "Room prices have changed. Please refresh and review your booking.",
+          code: "PRICE_MISMATCH"
+        },
+        { status: 409 }
       );
     }
 

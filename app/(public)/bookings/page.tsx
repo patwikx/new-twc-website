@@ -17,9 +17,18 @@ const BookingsPage = async () => {
      return (
         <div className="min-h-screen bg-black pt-32 px-10 text-white flex flex-col items-center justify-center">
              <h1 className="text-2xl mb-4">You must be logged in to view bookings.</h1>
-             <Button asChild variant="outline" className="rounded-none border-white/20 text-white hover:bg-white hover:text-black transition-colors uppercase tracking-widest text-xs h-12 px-8">
-                 <Link href="/auth/login">Login Now</Link>
-             </Button>
+             <div className="flex flex-col sm:flex-row gap-4 items-center">
+               <Button asChild variant="outline" className="rounded-none border-white/20 text-white hover:bg-white hover:text-black transition-colors uppercase tracking-widest text-xs h-12 px-8">
+                   <Link href="/auth/login">Login Now</Link>
+               </Button>
+               <span className="text-neutral-500 text-sm">or</span>
+               <Button asChild variant="link" className="text-orange-500 hover:text-orange-400 uppercase tracking-widest text-xs h-12 px-4">
+                   <Link href="/bookings/lookup">Look Up a Booking</Link>
+               </Button>
+             </div>
+             <p className="text-neutral-500 text-sm mt-6 text-center max-w-md">
+               Booked without an account? Use your booking reference and email to look up your reservation.
+             </p>
         </div>
      )
   }

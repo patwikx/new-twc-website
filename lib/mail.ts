@@ -130,6 +130,7 @@ const getBaseUrl = () => {
     checkOut: string;
     amount: string;
     guestName: string;
+    lookupToken?: string; // Secure token for direct booking access
   }
   
   export const sendBookingConfirmationEmail = async (params: BookingConfirmationParams) => {

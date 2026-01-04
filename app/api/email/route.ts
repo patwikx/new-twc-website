@@ -118,9 +118,13 @@ const processEmailRequest = async (body: any, apiKey: string) => {
       </html>
     `;
   } else if (type === "booking-confirmation") {
-    const { ref, propertyName, checkIn, checkOut, amount, guestName } = body;
+    const { ref, propertyName, checkIn, checkOut, amount, guestName, lookupToken } = body;
     const domain = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const confirmationLink = `${domain}/book/confirmation?ref=${ref}`;
+    // Use token link for direct access if available, otherwise fall back to manual lookup
+    const viewBookingLink = lookupToken 
+      ? `${domain}/bookings/lookup/${lookupToken}`
+      : `${domain}/bookings/lookup`;
     
     subject = `Booking Confirmed: ${ref} - Tropicana`;
     html = `
@@ -164,8 +168,20 @@ const processEmailRequest = async (body: any, apiKey: string) => {
                 </table>
               </div>
 
-              <div style="text-align: center; margin-top: 30px;">
-                <a href="${confirmationLink}" style="display: inline-block; padding: 15px 30px; background-color: #ffffff; color: #000000; text-decoration: none; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">Download Receipt & Booking Details</a>
+              <div style="text-align: center; margin-top: 30px; margin-bottom: 20px;">
+                <a href="${viewBookingLink}" style="display: inline-block; padding: 15px 30px; background-color: ${primaryColor}; color: #000000; text-decoration: none; font-family: sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">View Your Booking</a>
+              </div>
+              
+              <div style="text-align: center; margin-top: 15px;">
+                <a href="${confirmationLink}" style="display: inline-block; padding: 12px 25px; background-color: transparent; color: #ffffff; text-decoration: none; font-family: sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #444;">Download Receipt</a>
+              </div>
+              
+              <div style="border-top: 1px solid #333; margin: 30px 0; padding-top: 20px;">
+                <p style="color: ${mutedColor}; font-family: sans-serif; font-size: 12px; text-align: center; margin: 0;">
+                  Can't click the button? Look up your booking at<br>
+                  <a href="${domain}/bookings/lookup" style="color: ${primaryColor}; text-decoration: none;">${domain}/bookings/lookup</a><br>
+                  using reference <strong style="color: #ffffff;">${ref}</strong> and your email address.
+                </p>
               </div>
             </div>
             <div style="background-color: #0a0a0a; padding: 30px 40px; text-align: center; border-top: 1px solid #333;">
