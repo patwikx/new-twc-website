@@ -262,7 +262,10 @@ function BookingForm() {
          const checkoutResponse = await fetch('/api/payments/create-checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bookingId: bookingResult.bookingId })
+            body: JSON.stringify({ 
+               bookingId: bookingResult.bookingId,
+               verificationToken: bookingResult.verificationToken 
+            })
          });
 
          const checkoutData = await checkoutResponse.json();

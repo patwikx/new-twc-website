@@ -11,8 +11,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator";
 import { DynamicBreadcrumbs } from "@/components/admin/breadcrumbs";
-
-// ... imports remain the same, removing unused Breadcrumb imports happens automatically if I replace the block
+import { NotificationDropdown } from "@/components/admin/notifications/notification-dropdown";
 
 export default async function AdminLayout({
   children,
@@ -52,10 +51,13 @@ export default async function AdminLayout({
       />
       <SidebarInset className="bg-black">
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-white/5 bg-black px-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
             <DynamicBreadcrumbs />
+          </div>
+          <div className="flex items-center gap-2">
+            <NotificationDropdown userId={session.user.id!} />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 bg-black text-white min-h-screen">

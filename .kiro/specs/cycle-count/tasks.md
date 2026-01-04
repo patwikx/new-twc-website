@@ -1,0 +1,303 @@
+# Implementation Plan: Cycle Count Process
+
+## Overview
+
+This implementation plan breaks down the cycle count feature into incremental tasks, starting with the database schema, then the service layer, and finally the UI components.
+
+## Tasks
+
+- [x] 1. Database Schema Setup
+  - [x] 1.1 Add CycleCount model to Prisma schema
+    - Add CycleCount model with all fields
+    - Add CycleCountType enum (FULL, ABC_CLASS_A, ABC_CLASS_B, ABC_CLASS_C, RANDOM, SPOT)
+    - Add CycleCountStatus enum (DRAFT, SCHEDULED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, CANCELLED)
+    - _Requirements: REQ-CC-1.1, REQ-CC-1.2_
+  - [x] 1.2 Add CycleCountItem model to Prisma schema
+    - Add CycleCountItem model with quantity fields
+    - Add variance calculation fields
+    - Add audit fields (countedById, countedAt)
+    - Add adjustment tracking fields
+    - _Requirements: REQ-CC-2.2, REQ-CC-3.1_
+  - [x] 1.3 Update existing models with relations
+    - Add cycleCounts relation to Warehouse model
+    - Add cycleCountItems relation to StockItem model
+    - Add cycleCountItems relation to StockBatch model
+    - Run prisma generate and migrate
+    - _Requirements: REQ-CC-6.1, REQ-CC-6.2_
+
+- [x] 2. Core Service - Cycle Count CRUD
+  - [x] 2.1 Create cycle-count.ts service file
+    - Define TypeScript interfaces for inputs/outputs
+    - Implement generateCountNumber() function (CC-YYYY-NNNN format)
+    - _Requirements: REQ-CC-1.1_
+  - [x] 2.2 Implement createCycleCount function
+    - Validate warehouse exists and is active
+    - Generate unique count number
+    - Create cycle count in DRAFT status
+    - Support all count types
+    - _Requirements: REQ-CC-1.1, REQ-CC-1.2_
+  - [x] 2.3 Implement getCycleCountById and getCycleCounts
+    - Include all relations (items, warehouse, stockItem)
+    - Support filtering by status, warehouse, date range
+    - Pagination support
+    - _Requirements: REQ-CC-5.1_
+  - [x] 2.4 Implement updateCycleCount function
+    - Allow updates only in DRAFT status
+    - Update notes, scheduledAt, blindCount
+    - _Requirements: REQ-CC-1.3_
+  - [x] 2.5 Implement cancelCycleCount function
+    - Set status to CANCELLED
+    - Record cancellation reason
+    - _Requirements: REQ-CC-4.4_
+
+- [x] 3. Checkpoint - Basic CRUD complete
+  - Verify cycle count can be created and retrieved
+  - Test count number generation
+
+- [x] 4. Count Item Population
+  - [x] 4.1 Implement populateCountItems for FULL type
+    - Get all stock items with quantity > 0 in warehouse
+    - Create CycleCountItem for each
+    - _Requirements: REQ-CC-1.2_
+  - [x] 4.2 Implement ABC classification logic
+    - Calculate total value per item (qty × avgCost)
+    - Sort by value descending
+    - Classify: A (top 80% value), B (next 15%), C (bottom 5%)
+    - _Requirements: REQ-CC-1.2_
+  - [x] 4.3 Implement populateCountItems for ABC types
+    - Use ABC classification to filter items
+    - ABC_CLASS_A: only A items
+    - ABC_CLASS_B: only B items
+    - ABC_CLASS_C: only C items
+    - _Requirements: REQ-CC-1.2_
+  - [x] 4.4 Implement populateCountItems for RANDOM type
+    - Accept samplePercent parameter
+    - Randomly select percentage of items
+    - _Requirements: REQ-CC-1.2_
+  - [x] 4.5 Implement populateCountItems for SPOT type
+    - Accept specific itemIds array
+    - Create items only for selected stock items
+    - _Requirements: REQ-CC-1.2_
+  - [x] 4.6 Implement batch-level item population
+    - For items with batch tracking, create separate entries per batch
+    - Include batch number and expiration date
+    - _Requirements: REQ-CC-2.4_
+
+- [x] 5. Count Execution Service
+  - [x] 5.1 Implement startCycleCount function
+    - Validate status is DRAFT or SCHEDULED
+    - Snapshot current quantities to systemQuantity
+    - Snapshot current average costs to unitCost
+    - Set status to IN_PROGRESS
+    - Record startedAt timestamp
+    - _Requirements: REQ-CC-2.1_
+  - [x] 5.2 Implement recordCount function
+    - Validate cycle count is IN_PROGRESS
+    - Update countedQuantity for item
+    - Record countedById and countedAt
+    - Allow notes per item
+    - _Requirements: REQ-CC-2.2_
+  - [x] 5.3 Implement recordBulkCounts function
+    - Accept array of counts
+    - Update multiple items in transaction
+    - _Requirements: REQ-CC-2.2_
+  - [x] 5.4 Implement getCountProgress function
+    - Return total items, items counted, items remaining
+    - _Requirements: REQ-CC-2.2_
+
+- [x] 6. Checkpoint - Count execution complete
+  - Test starting a count and entering quantities
+  - Verify system quantities are locked at start
+
+- [x] 7. Variance Calculation
+  - [x] 7.1 Implement calculateVariances function
+    - Calculate variance = counted - system
+    - Calculate variancePercent = (variance / system) × 100
+    - Calculate varianceCost = variance × unitCost
+    - Handle zero system quantity edge case
+    - _Requirements: REQ-CC-3.1_
+  - [x] 7.2 Implement submitForReview function
+    - Validate all items have counts
+    - Calculate variances for all items
+    - Update cycle count summary fields
+    - Set status to PENDING_REVIEW
+    - _Requirements: REQ-CC-3.3_
+  - [x] 7.3 Implement updateCycleCountSummary function
+    - Calculate totalItems, itemsCounted
+    - Calculate itemsWithVariance (non-zero variance)
+    - Calculate totalVarianceCost (sum of absolute variance costs)
+    - Calculate accuracyPercent (items with zero variance / total)
+    - _Requirements: REQ-CC-5.2_
+
+- [x] 8. Approval Workflow
+  - [x] 8.1 Implement approveCycleCount function
+    - Validate status is PENDING_REVIEW
+    - Record approvedById and completedAt
+    - Set status to COMPLETED
+    - _Requirements: REQ-CC-4.2_
+  - [x] 8.2 Implement createAdjustments function
+    - For each item with variance, call adjustStock
+    - Set reason: "Cycle Count Adjustment: {countNumber}"
+    - Set referenceType: "CYCLE_COUNT"
+    - Set referenceId: cycleCountItem.id
+    - Update adjustmentMade and adjustmentId on item
+    - _Requirements: REQ-CC-4.3, REQ-CC-6.1_
+  - [x] 8.3 Implement rejectCycleCount function
+    - Set status back to IN_PROGRESS
+    - Clear counted quantities (optional, configurable)
+    - Record rejection reason
+    - _Requirements: REQ-CC-4.4_
+
+- [x] 9. Checkpoint - Full workflow complete
+  - Test complete flow: create → start → count → submit → approve
+  - Verify adjustments are created correctly
+
+- [x] 10. Reporting Functions
+  - [x] 10.1 Implement getCycleCountReport function
+    - Return detailed report with all items
+    - Include system qty, counted qty, variance, cost
+    - Summary statistics
+    - _Requirements: REQ-CC-5.1_
+  - [x] 10.2 Implement getInventoryAccuracy function
+    - Query completed cycle counts in date range
+    - Calculate accuracy % per count
+    - Return trend data for charting
+    - _Requirements: REQ-CC-5.2_
+  - [x] 10.3 Implement getVarianceAnalysis function
+    - Top items by variance frequency
+    - Top items by variance cost
+    - Variance by category
+    - _Requirements: REQ-CC-5.3_
+
+- [x] 11. Export service from index
+  - Add cycle-count exports to lib/inventory/index.ts
+
+- [x] 12. Checkpoint - Service layer complete
+  - All service functions implemented
+  - Ready for UI development
+
+- [x] 13. Admin UI - Cycle Count List
+  - [x] 13.1 Create cycle counts list page
+    - Route: /admin/inventory/cycle-counts
+    - Display cycle counts with status badges
+    - Filter by status, warehouse, date
+    - Actions: View, Start, Cancel
+    - _Requirements: REQ-CC-1.1_
+  - [x] 13.2 Create cycle-counts-table.tsx component
+    - Columns: Count #, Warehouse, Type, Status, Scheduled, Items, Accuracy
+    - Status badge colors
+    - Action dropdown menu
+    - _Requirements: REQ-CC-1.1_
+
+- [x] 14. Admin UI - Create Cycle Count
+  - [x] 14.1 Create new cycle count page
+    - Route: /admin/inventory/cycle-counts/new
+    - Form for warehouse, type, options
+    - _Requirements: REQ-CC-1.1, REQ-CC-1.2_
+  - [x] 14.2 Create cycle-count-form.tsx component
+    - Warehouse selector
+    - Count type selector with descriptions
+    - Blind count toggle
+    - Schedule date picker (optional)
+    - Notes textarea
+    - For SPOT type: item multi-select
+    - For RANDOM type: sample percentage input
+    - _Requirements: REQ-CC-1.1, REQ-CC-1.2, REQ-CC-1.3, REQ-CC-2.3_
+
+- [x] 15. Admin UI - Cycle Count Detail
+  - [x] 15.1 Create cycle count detail page
+    - Route: /admin/inventory/cycle-counts/[id]
+    - Show count info and status
+    - Different views based on status
+    - _Requirements: REQ-CC-2.1, REQ-CC-4.1_
+  - [x] 15.2 Create cycle-count-detail.tsx component
+    - Header with count number, status, warehouse
+    - Status-specific action buttons
+    - Items table with counts
+    - Summary statistics
+    - _Requirements: REQ-CC-2.1, REQ-CC-3.1_
+  - [x] 15.3 Implement status-specific views
+    - DRAFT: Show items, allow edit, Start button
+    - IN_PROGRESS: Count entry interface, Submit button
+    - PENDING_REVIEW: Variance review, Approve/Reject buttons
+    - COMPLETED: Final report view
+    - _Requirements: REQ-CC-2.1, REQ-CC-3.3, REQ-CC-4.1, REQ-CC-4.2_
+
+- [x] 16. Admin UI - Count Entry
+  - [x] 16.1 Create count-entry-form.tsx component
+    - List items to count
+    - Input field for each item
+    - Show/hide system qty based on blindCount
+    - Notes field per item
+    - Save progress button
+    - _Requirements: REQ-CC-2.2, REQ-CC-2.3_
+  - [x] 16.2 Create count-entry-row.tsx component
+    - Item name, SKU, unit
+    - Large quantity input
+    - Variance indicator (after entry)
+    - Notes toggle
+    - _Requirements: REQ-CC-2.2_
+  - [x] 16.3 Implement auto-save functionality
+    - Debounced save on input change
+    - Visual save indicator
+    - _Requirements: REQ-CC-2.2_
+
+- [x] 17. Admin UI - Variance Review
+  - [x] 17.1 Create variance-review-table.tsx component
+    - Columns: Item, System Qty, Counted Qty, Variance, %, Cost
+    - Highlight significant variances
+    - Sort by variance amount/cost
+    - _Requirements: REQ-CC-3.1, REQ-CC-3.2, REQ-CC-4.1_
+  - [x] 17.2 Implement variance threshold highlighting
+    - Configurable threshold (default 5% or ₱1000)
+    - Red highlight for items exceeding threshold
+    - Summary of flagged items
+    - _Requirements: REQ-CC-3.2_
+
+- [x] 18. Admin UI - Reports
+  - [x] 18.1 Create cycle-count-report.tsx component
+    - Printable format
+    - All items with variances
+    - Summary statistics
+    - Signatures section
+    - _Requirements: REQ-CC-5.1_
+  - [x] 18.2 Create inventory-accuracy-chart.tsx component
+    - Line chart showing accuracy % over time
+    - Filter by warehouse
+    - _Requirements: REQ-CC-5.2_
+  - [x] 18.3 Add cycle count section to inventory reports page
+    - Accuracy metrics
+    - Recent cycle counts
+    - Variance analysis
+    - _Requirements: REQ-CC-5.2, REQ-CC-5.3_
+
+- [x] 19. Navigation & Permissions
+  - [x] 19.1 Add Cycle Counts to sidebar navigation
+    - Under Inventory section
+    - Icon: ClipboardCheck or similar
+    - _Requirements: REQ-CC-1.1_
+  - [x] 19.2 Add cycle count permissions
+    - cycle-count:view
+    - cycle-count:create
+    - cycle-count:count
+    - cycle-count:approve
+    - cycle-count:cancel
+    - _Requirements: REQ-CC-8.1_
+  - [x] 19.3 Apply permission checks to pages and actions
+    - Check permissions in server components
+    - Hide/disable UI elements based on permissions
+    - _Requirements: REQ-CC-8.1_
+
+- [x] 20. Final Checkpoint
+  - Test complete workflow end-to-end
+  - Verify all requirements implemented
+  - Test permission controls
+  - Review UI/UX on different screen sizes
+
+## Notes
+
+- Tasks build incrementally - complete each checkpoint before proceeding
+- Service layer should be fully tested before UI development
+- Consider mobile/tablet usage for count entry interface
+- Blind count feature is important for unbiased counting
+- ABC classification helps prioritize high-value items for more frequent counts

@@ -1,0 +1,436 @@
+# Implementation Plan: Enterprise Feature Gaps
+
+## Overview
+
+This implementation plan covers all enterprise features in priority order: User-Warehouse Access Control (P1), POS System (P0), Purchase Orders (P1), Supplier/Category UI (P1), Audit Trail (P1), Shift Management (P2), Notifications (P2), and Dashboard Analytics (P2). All features are property-aware.
+
+## Tasks
+
+- [x] 1. Database Schema Updates
+  - [x] 1.1 Add UserWarehouseAccess model and AccessLevel enum to Prisma schema
+    - Create junction table linking users to warehouses with access levels
+    - Add indexes for userId and warehouseId
+    - _Requirements: 2.1_
+  - [x] 1.2 Add POS models (SalesOutlet, Table, Order, OrderItem, OrderPayment) to Prisma schema
+    - Create all POS-related models with proper relationships
+    - Add OutletType, TableStatus, OrderStatus, OrderItemStatus, PaymentMethod enums
+    - _Requirements: 3.1, 4.1, 5.1_
+  - [x] 1.3 Add Shift model to Prisma schema
+    - Create shift tracking with cash reconciliation fields
+    - Add ShiftStatus enum
+    - _Requirements: 13.1_
+  - [x] 1.4 Add PurchaseOrder models (PurchaseOrder, PurchaseOrderItem, POReceipt, POReceiptItem) to Prisma schema
+    - Create PO workflow models with status tracking
+    - Add POStatus enum
+    - _Requirements: 9.1_
+  - [x] 1.5 Add AuditLog model to Prisma schema
+    - Create audit log with old/new values JSON fields
+    - Add indexes for entityType, entityId, userId, createdAt
+    - _Requirements: 12.1_
+  - [x] 1.6 Add Notification model to Prisma schema
+    - Create notification with type, read status, and data fields
+    - Add NotificationType enum
+    - _Requirements: 15.1_
+  - [x] 1.7 Update existing models with new relations
+    - Add relations to User, Property, Warehouse, MenuItem, Booking, Supplier
+    - Run prisma migrate to apply all changes
+    - _Requirements: All_
+
+- [x] 2. Checkpoint - Database Migration
+  - Run `npx prisma migrate dev` and verify all models created
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 3. User-Warehouse Access Control Service
+  - [x] 3.1 Create lib/inventory/user-warehouse-access.ts service
+    - Implement getUserWarehouseAccess, checkWarehouseAccess, getAccessibleWarehouses
+    - Implement grantWarehouseAccess, revokeWarehouseAccess
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [x] 3.2 Write property test for warehouse access level enforcement
+    - **Property 3: Warehouse Access Level Enforcement**
+    - **Validates: Requirements 2.2, 2.3, 2.4**
+  - [x] 3.3 Update warehouse queries to filter by user access
+    - Modify getWarehouses, getWarehouseById to check access
+    - Add super admin bypass logic
+    - _Requirements: 2.5, 2.6_
+  - [x] 3.4 Write property test for warehouse access filtering
+    - **Property 4: Warehouse Access Filtering**
+    - **Validates: Requirements 2.5, 2.6**
+
+- [x] 4. User-Warehouse Access UI
+  - [x] 4.1 Create warehouse access management component
+    - Build components/admin/inventory/warehouse-access-manager.tsx
+    - Display users with access and their levels
+    - _Requirements: 2.1_
+  - [x] 4.2 Create grant/revoke access dialog
+    - Build user selection with access level dropdown
+    - Handle grant and revoke operations
+    - _Requirements: 2.1_
+  - [x] 4.3 Integrate access manager into warehouse detail page
+    - Add access management tab to warehouse detail
+    - Only show for users with ADMIN access
+    - _Requirements: 2.4_
+
+- [x] 5. Checkpoint - User-Warehouse Access Complete
+  - Verify access control works for VIEW, MANAGE, ADMIN levels
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 6. POS Sales Outlet Service
+  - [x] 6.1 Create lib/pos/outlet.ts service
+    - Implement createOutlet, getOutlets, updateOutlet, deactivateOutlet
+    - Filter by property context
+    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+  - [x] 6.2 Create actions/admin/pos/outlets.ts server actions
+    - Create server actions for outlet CRUD operations
+    - _Requirements: 3.1, 3.2, 3.3_
+
+- [x] 7. POS Table Management Service
+  - [x] 7.1 Create lib/pos/table.ts service
+    - Implement getTables, createTable, updateTableStatus, getTableWithOrder
+    - Handle status transitions
+    - _Requirements: 4.1, 4.2_
+  - [x] 7.2 Write property test for table status workflow
+    - **Property 5: Table Status Workflow Integrity**
+    - **Validates: Requirements 4.3, 4.4, 4.5**
+
+- [x] 8. POS Order Service
+  - [x] 8.1 Create lib/pos/order.ts service
+    - Implement createOrder with unique order number generation
+    - Implement addOrderItem, removeOrderItem with availability check
+    - _Requirements: 5.1, 5.2, 5.6_
+  - [x] 8.2 Implement order calculations and discounts
+    - Implement calculateOrderTotals, applyDiscount
+    - Handle tax and service charge calculations
+    - _Requirements: 5.2, 5.4_
+  - [x] 8.3 Write property test for order total calculation
+    - **Property 6: Order Total Calculation Consistency**
+    - **Validates: Requirements 5.2, 5.4**
+  - [x] 8.4 Implement kitchen routing
+    - Implement sendToKitchen, update order and item statuses
+    - _Requirements: 5.3, 6.1_
+  - [x] 8.5 Write property test for order status progression
+    - **Property 8: Order Status Progression**
+    - **Validates: Requirements 5.3, 6.5, 7.5**
+
+- [x] 9. POS Payment Service
+  - [x] 9.1 Create lib/pos/payment.ts service
+    - Implement processPayment for all payment methods
+    - Handle split payments with multiple OrderPayment records
+    - _Requirements: 7.1, 7.4_
+  - [x] 9.2 Write property test for split payment integrity
+    - **Property 7: Split Payment Integrity**
+    - **Validates: Requirements 5.5, 7.4**
+  - [x] 9.3 Implement room charge processing
+    - Validate booking status and guest authorization
+    - Add charge to booking folio
+    - _Requirements: 7.3, 8.1, 8.2, 8.3_
+  - [x] 9.4 Write property test for room charge validation
+    - **Property 10: Room Charge Booking Validation**
+    - **Validates: Requirements 8.1, 8.2**
+  - [x] 9.5 Write property test for room charge folio consistency
+    - **Property 11: Room Charge Folio Consistency**
+    - **Validates: Requirements 8.3**
+
+- [x] 10. POS Kitchen Display Service
+  - [x] 10.1 Create lib/pos/kitchen.ts service
+    - Implement getKitchenOrders, markItemPreparing, markItemReady
+    - Calculate order age and highlight overdue
+    - _Requirements: 6.1, 6.2, 6.3, 6.5_
+
+- [x] 11. Checkpoint - POS Services Complete
+  - Verify order creation, payment, and kitchen routing work
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 12. POS UI Components
+  - [x] 12.1 Create outlet management pages
+    - Build app/(admin)/admin/pos/outlets/page.tsx list page
+    - Build app/(admin)/admin/pos/outlets/new/page.tsx create page
+    - Build app/(admin)/admin/pos/outlets/[id]/page.tsx edit page
+    - _Requirements: 3.1, 3.2, 3.3_
+  - [x] 12.2 Create table management component
+    - Build components/admin/pos/table-grid.tsx with floor plan view
+    - Build components/admin/pos/table-card.tsx with status display
+    - _Requirements: 4.1, 4.2_
+  - [x] 12.3 Create order entry interface
+    - Build components/admin/pos/order-entry.tsx main POS interface
+    - Build components/admin/pos/menu-grid.tsx for item selection
+    - Build components/admin/pos/order-summary.tsx for current order
+    - _Requirements: 5.1, 5.2_
+  - [x] 12.4 Create payment dialog
+    - Build components/admin/pos/payment-dialog.tsx
+    - Support all payment methods and split payments
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - [x] 12.5 Create kitchen display page
+    - Build app/(admin)/admin/pos/kitchen/page.tsx
+    - Build components/admin/pos/kitchen-order-card.tsx
+    - _Requirements: 6.1, 6.2, 6.3_
+  - [x] 12.6 Create POS main page
+    - Build app/(admin)/admin/pos/page.tsx combining table view and order entry
+    - _Requirements: All POS_
+
+- [x] 13. Checkpoint - POS UI Complete
+  - Test complete order flow from table selection to payment
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 14. Purchase Order Service
+  - [x] 14.1 Create lib/inventory/purchase-order.ts service
+    - Implement createPurchaseOrder with unique PO number generation
+    - Implement addPOItem, removePOItem, updatePOItem
+    - _Requirements: 9.1_
+  - [x] 14.2 Write property test for PO number uniqueness
+    - **Property 12: Purchase Order Number Uniqueness**
+    - **Validates: Requirements 9.1**
+  - [x] 14.3 Implement PO workflow
+    - Implement submitForApproval, approvePO, rejectPO, sendToSupplier
+    - _Requirements: 9.2, 9.3_
+  - [x] 14.4 Write property test for PO status workflow
+    - **Property 13: PO Status Workflow Integrity**
+    - **Validates: Requirements 9.2, 9.3, 9.5, 9.6**
+  - [x] 14.5 Implement PO receiving
+    - Implement receiveAgainstPO with partial receiving support
+    - Create stock movements and update stock levels
+    - _Requirements: 9.4, 9.5, 9.6_
+  - [x] 14.6 Write property test for PO receiving consistency
+    - **Property 14: PO Receiving Quantity Consistency**
+    - **Validates: Requirements 9.4**
+  - [x] 14.7 Implement auto-suggest PO items
+    - Implement getSuggestedPOItems based on par levels
+    - _Requirements: 9.7_
+
+- [x] 15. Purchase Order UI
+  - [x] 15.1 Create PO list page
+    - Build app/(admin)/admin/inventory/purchase-orders/page.tsx
+    - Build components/admin/inventory/purchase-orders-table.tsx
+    - _Requirements: 9.1_
+  - [x] 15.2 Create PO form page
+    - Build app/(admin)/admin/inventory/purchase-orders/new/page.tsx
+    - Build components/admin/inventory/purchase-order-form.tsx
+    - _Requirements: 9.1_
+  - [x] 15.3 Create PO detail page
+    - Build app/(admin)/admin/inventory/purchase-orders/[id]/page.tsx
+    - Build components/admin/inventory/purchase-order-detail.tsx
+    - Include approval/rejection actions
+    - _Requirements: 9.2, 9.3_
+  - [x] 15.4 Create PO receiving page
+    - Build app/(admin)/admin/inventory/purchase-orders/[id]/receive/page.tsx
+    - Build components/admin/inventory/po-receive-form.tsx
+    - _Requirements: 9.4, 9.5_
+
+- [x] 16. Checkpoint - Purchase Orders Complete
+  - Test complete PO workflow from creation to receiving
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 17. Supplier Management UI
+  - [x] 17.1 Create supplier list page
+    - Build app/(admin)/admin/inventory/suppliers/page.tsx
+    - Build components/admin/inventory/suppliers-table.tsx
+    - _Requirements: 10.1_
+  - [x] 17.2 Create supplier form pages
+    - Build app/(admin)/admin/inventory/suppliers/new/page.tsx
+    - Build app/(admin)/admin/inventory/suppliers/[id]/page.tsx
+    - Build components/admin/inventory/supplier-form.tsx
+    - _Requirements: 10.2, 10.3, 10.4_
+
+- [x] 18. Stock Category Management UI
+  - [x] 18.1 Create category list page
+    - Build app/(admin)/admin/inventory/categories/page.tsx
+    - Build components/admin/inventory/categories-table.tsx
+    - _Requirements: 11.1_
+  - [x] 18.2 Create category form dialog
+    - Build components/admin/inventory/category-dialog.tsx
+    - Handle create, edit, delete with validation
+    - _Requirements: 11.2, 11.3, 11.4_
+  - [x] 18.3 Write property test for category deletion protection
+    - **Property 15: Category Deletion Protection**
+    - **Validates: Requirements 11.5**
+
+- [x] 19. Audit Trail Service
+  - [x] 19.1 Create lib/audit/audit-log.ts service
+    - Implement logAction with old/new value capture
+    - Implement getAuditLogs with filtering
+    - _Requirements: 12.1, 12.2, 12.3_
+  - [x] 19.2 Write property test for audit log completeness
+    - **Property 16: Audit Log Completeness**
+    - **Validates: Requirements 12.1**
+  - [x] 19.3 Write property test for audit log value capture
+    - **Property 17: Audit Log Value Capture**
+    - **Validates: Requirements 12.2**
+  - [x] 19.4 Integrate audit logging into inventory services
+    - Add audit logging to stock movements, adjustments, waste records
+    - Add audit logging to PO operations
+    - _Requirements: 12.1_
+
+- [x] 20. Audit Trail UI
+  - [x] 20.1 Create audit log page
+    - Build app/(admin)/admin/audit/page.tsx
+    - Build components/admin/audit/audit-log-table.tsx
+    - _Requirements: 12.3_
+  - [x] 20.2 Create audit log filters
+    - Build components/admin/audit/audit-log-filters.tsx
+    - Support user, entity type, date range, action filters
+    - _Requirements: 12.3_
+
+- [x] 21. Checkpoint - Audit Trail Complete
+  - Verify audit logs are created for all inventory operations
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 22. Shift Management Service
+  - [x] 22.1 Create lib/pos/shift.ts service
+    - Implement openShift, closeShift, getCurrentShift
+    - Calculate expected cash and variance
+    - _Requirements: 13.1, 13.3, 13.4_
+  - [x] 22.2 Write property test for shift variance calculation
+    - **Property 18: Shift Cash Variance Calculation**
+    - **Validates: Requirements 13.3, 13.4**
+  - [x] 22.3 Integrate shift with order processing
+    - Associate orders with current shift
+    - Require open shift for order processing
+    - _Requirements: 13.2_
+  - [x] 22.4 Write property test for shift order association
+    - **Property 19: Shift Order Association**
+    - **Validates: Requirements 13.2**
+  - [x] 22.5 Implement shift report generation
+    - Generate report with transactions, payments by method, variance
+    - _Requirements: 13.5_
+
+- [x] 23. Shift Management UI
+  - [x] 23.1 Create shift management page
+    - Build app/(admin)/admin/pos/shifts/page.tsx
+    - Build components/admin/pos/shifts-table.tsx
+    - _Requirements: 13.1_
+  - [x] 23.2 Create open/close shift dialogs
+    - Build components/admin/pos/open-shift-dialog.tsx
+    - Build components/admin/pos/close-shift-dialog.tsx
+    - _Requirements: 13.1, 13.3_
+  - [x] 23.3 Create shift report view
+    - Build components/admin/pos/shift-report.tsx
+    - _Requirements: 13.5_
+
+- [x] 24. Notification Service
+  - [x] 24.1 Create lib/notifications/notification.ts service
+    - Implement createNotification, getUserNotifications, markAsRead
+    - Implement getUnreadCount
+    - _Requirements: 15.1, 15.6_
+  - [x] 24.2 Write property test for notification creation on events
+    - **Property 20: Notification Creation on Events**
+    - **Validates: Requirements 15.1, 15.2, 15.3, 15.4**
+  - [x] 24.3 Write property test for notification read state
+    - **Property 21: Notification Read State**
+    - **Validates: Requirements 15.6**
+  - [x] 24.4 Integrate notifications with inventory events
+    - Create LOW_STOCK notifications when below par
+    - Create EXPIRING_BATCH notifications
+    - _Requirements: 15.1, 15.4_
+  - [x] 24.5 Integrate notifications with PO workflow
+    - Create PO_APPROVAL notifications
+    - _Requirements: 15.2_
+  - [x] 24.6 Integrate notifications with requisitions
+    - Create REQUISITION_STATUS notifications
+    - _Requirements: 15.3_
+
+- [x] 25. Notification UI
+  - [x] 25.1 Create notification dropdown component
+    - Build components/admin/notifications/notification-dropdown.tsx
+    - Display unread count badge
+    - _Requirements: 15.5_
+  - [x] 25.2 Create notification list page
+    - Build app/(admin)/admin/notifications/page.tsx
+    - Build components/admin/notifications/notification-list.tsx
+    - _Requirements: 15.6_
+  - [x] 25.3 Integrate notification dropdown into admin header
+    - Add to app-sidebar.tsx or admin layout
+    - _Requirements: 15.5_
+
+- [x] 26. Checkpoint - Notifications Complete
+  - Verify notifications are created and displayed correctly
+  - Ensure all tests pass, ask the user if questions arise
+
+- [x] 27. Dashboard Analytics Service
+  - [x] 27.1 Create lib/analytics/dashboard.ts service
+    - Implement getInventoryValueByWarehouse
+    - Implement getSalesByOutlet with date range
+    - _Requirements: 16.1, 16.2_
+  - [x] 27.2 Implement food cost and waste analytics
+    - Implement getFoodCostTrends
+    - Implement getWasteAnalysis
+    - _Requirements: 16.3, 16.4_
+  - [x] 27.3 Implement multi-property consolidation
+    - Support "All Properties" aggregation
+    - _Requirements: 16.6_
+
+- [x] 28. Dashboard UI
+  - [x] 28.1 Create inventory dashboard page
+    - Build app/(admin)/admin/dashboard/inventory/page.tsx
+    - Display inventory value charts
+    - _Requirements: 16.1_
+  - [x] 28.2 Create sales dashboard page
+    - Build app/(admin)/admin/dashboard/sales/page.tsx
+    - Display sales by outlet charts
+    - _Requirements: 16.2_
+  - [x] 28.3 Create analytics dashboard page
+    - Build app/(admin)/admin/dashboard/analytics/page.tsx
+    - Display food cost and waste analysis
+    - _Requirements: 16.3, 16.4_
+  - [x] 28.4 Implement dashboard export
+    - Add PDF and Excel export functionality
+    - _Requirements: 16.5_
+
+- [x] 29. Bulk Operations Service
+  - [x] 29.1 Create lib/bulk/import.ts service
+    - Implement importStockItems with validation
+    - Implement bulkUpdatePrices
+    - _Requirements: 17.1, 17.2_
+  - [x] 29.2 Write property test for bulk import atomicity
+    - **Property 22: Bulk Import Atomicity**
+    - **Validates: Requirements 17.4**
+  - [x] 29.3 Create lib/bulk/export.ts service
+    - Implement exportStockItems, exportOrders
+    - Generate CSV and Excel files
+    - _Requirements: 17.3_
+  - [x] 29.4 Create import templates
+    - Generate downloadable templates with field specifications
+    - _Requirements: 17.5_
+
+- [x] 30. Bulk Operations UI
+  - [x] 30.1 Create bulk import page
+    - Build app/(admin)/admin/inventory/bulk/import/page.tsx
+    - Build components/admin/inventory/bulk-import-form.tsx
+    - _Requirements: 17.1_
+  - [x] 30.2 Create bulk export functionality
+    - Add export buttons to relevant list pages
+    - _Requirements: 17.3_
+
+- [x] 31. Property Context Integration
+  - [x] 31.1 Update all services to use property context
+    - Ensure all queries filter by current property scope
+    - _Requirements: 1.1, 1.2_
+  - [x] 31.2 Write property test for property scope filtering
+    - **Property 1: Property Scope Filtering**
+    - **Validates: Requirements 1.1, 1.2, 3.4**
+  - [x] 31.3 Write property test for super admin all properties access
+    - **Property 2: Super Admin All Properties Access**
+    - **Validates: Requirements 1.3**
+
+- [x] 32. Navigation Updates
+  - [x] 32.1 Update admin sidebar with new menu items
+    - Add POS section (Outlets, Tables, Orders, Kitchen, Shifts)
+    - Add Purchase Orders under Inventory
+    - Add Suppliers and Categories under Inventory
+    - Add Audit Log under Admin
+    - Add Notifications
+    - Add Dashboard sections
+    - _Requirements: All_
+
+- [x] 33. Final Checkpoint - All Features Complete
+  - Run full test suite
+  - Verify all property-based tests pass
+  - Test complete workflows across all features
+  - Ensure all tests pass, ask the user if questions arise
+
+## Notes
+
+- All tasks including property tests are required for comprehensive coverage
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties
+- Unit tests validate specific examples and edge cases
+- All features must respect the current property context from Property Switcher

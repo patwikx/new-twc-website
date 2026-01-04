@@ -38,6 +38,12 @@ export type Permission =
   // Social (Reviews)
   | "reviews:view"
   | "reviews:moderate" // Delete or hide reviews
+  // Cycle Count
+  | "cycle-count:view"
+  | "cycle-count:create"
+  | "cycle-count:count"
+  | "cycle-count:approve"
+  | "cycle-count:cancel"
   // Analytics & System
   | "analytics:view"
   | "settings:view"
@@ -56,6 +62,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "marketing:view", "coupons:create", "coupons:edit", "coupons:delete", 
     "newsletter:view", "newsletter:export",
     "reviews:view", "reviews:moderate",
+    "cycle-count:view", "cycle-count:create", "cycle-count:count", "cycle-count:approve", "cycle-count:cancel",
     "analytics:view",
     "settings:view", "settings:manage"
   ],
@@ -73,7 +80,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     // Content management for blog/experiences
     "content:view", "content:create", "content:edit",
     // View reviews
-    "reviews:view"
+    "reviews:view",
+    // Cycle count - can view and enter counts, but not approve or cancel
+    "cycle-count:view", "cycle-count:count"
   ],
   // Guests have NO admin permissions
   GUEST: []

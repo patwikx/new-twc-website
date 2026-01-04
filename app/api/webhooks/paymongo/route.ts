@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
 import { sendBookingConfirmationEmail } from '@/lib/mail';
+import { generateToken } from '@/lib/booking/lookup-token';
 
 import { 
   WebhookEvent, 
@@ -333,6 +334,17 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
           weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
         }) : 'N/A';
         
+        // Generate secure lookup token for direct booking access
+        let lookupToken: string | undefined;
+        try {
+          const tokenResult = await generateToken(booking.id);
+          lookupToken = tokenResult.token;
+          console.log(`🔑 Lookup token generated for booking ${booking.shortRef}`);
+        } catch (tokenError) {
+          console.error('Failed to generate lookup token:', tokenError);
+          // Continue without token - email will fall back to manual lookup
+        }
+        
         await sendBookingConfirmationEmail({
           email: booking.guestEmail,
           ref: booking.shortRef,
@@ -340,7 +352,8 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
           checkIn,
           checkOut,
           amount: `PHP ${Number(booking.totalAmount).toLocaleString()}`,
-          guestName: `${booking.guestFirstName} ${booking.guestLastName}`
+          guestName: `${booking.guestFirstName} ${booking.guestLastName}`,
+          lookupToken
         });
         
         console.log(`📧 Confirmation email sent to ${booking.guestEmail}`);

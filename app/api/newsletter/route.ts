@@ -1,16 +1,55 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
 import { db } from '@/lib/db';
+import { checkLimit } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Rate limit configuration for newsletter endpoint
+const NEWSLETTER_RATE_LIMIT = {
+  limit: 3,
+  windowMs: 60 * 1000, // 60 seconds
+  keyPrefix: 'newsletter'
+};
+
+/**
+ * Extract client IP from request headers
+ */
+function getClientIP(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp;
+  }
+  return 'unknown';
+}
 
 const NewsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
 });
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limiting check
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, NEWSLETTER_RATE_LIMIT);
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many subscription attempts. Please try again later." },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': String(rateLimitResult.retryAfter || 60)
+          }
+        }
+      );
+    }
+
     if (!process.env.RESEND_API_KEY) {
         console.error("CRITICAL: RESEND_API_KEY is not set!");
         return NextResponse.json({ error: "Server configuration error: Email service not configured." }, { status: 500 });

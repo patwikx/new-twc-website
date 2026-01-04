@@ -2,7 +2,7 @@
 
 import { Booking, BookingItem, Payment, BookingStatus, PaymentStatus } from "@prisma/client";
 import { format } from "date-fns";
-import { CheckCircle2, Download, Printer, Clock, AlertCircle } from "lucide-react";
+import { CheckCircle2, Download, Printer, Clock, AlertCircle, Bookmark, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { jsPDF } from "jspdf";
 import Link from "next/link";
@@ -263,6 +263,27 @@ export default function ConfirmationClient({
                <Download className="h-4 w-4 mr-2" /> Download Receipt
              </Button>
            )}
+        </div>
+
+        {/* Save This Link Section (Requirement 5.3) */}
+        <div className="bg-neutral-900/50 border border-white/10 p-6 max-w-xl w-full mt-8">
+          <div className="flex items-start gap-3">
+            <Bookmark className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+            <div className="space-y-2 text-left">
+              <h3 className="text-white font-medium">Save Your Booking Details</h3>
+              <p className="text-neutral-400 text-sm">
+                Didn't create an account? You can always look up your booking using your reference number 
+                <span className="text-white font-mono mx-1">{initialBooking.shortRef}</span> 
+                and email address.
+              </p>
+              <Link 
+                href="/bookings/lookup" 
+                className="inline-flex items-center gap-1 text-orange-500 hover:text-orange-400 text-sm transition-colors"
+              >
+                Go to Booking Lookup <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

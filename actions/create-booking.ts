@@ -3,6 +3,8 @@
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { nanoid } from "nanoid";
+import { checkRoomAvailability } from "@/lib/booking/availability";
+import { generateVerificationToken } from "@/lib/booking/verification-token";
 
 interface CartItem {
   propertySlug: string;
@@ -26,6 +28,8 @@ type CreateBookingResult =
       bookingId: string;
       shortRef: string;
       totalAmount: number;
+      verificationToken: string;  // Short-lived token for guest checkout
+      tokenExpiresAt: Date;
     }
   | {
       success: false;
@@ -63,6 +67,31 @@ export async function createBooking(
 
     // Create room lookup map
     const roomMap = new Map(rooms.map(room => [room.id, room]));
+
+    // Check room availability before proceeding
+    const availabilityChecks = cartItems.map(item => ({
+      roomId: item.roomId,
+      checkIn: new Date(item.checkIn),
+      checkOut: new Date(item.checkOut)
+    }));
+    
+    const availabilityResults = await checkRoomAvailability(availabilityChecks);
+    
+    // Check if any rooms are unavailable
+    const unavailableRooms: string[] = [];
+    for (const [roomId, result] of availabilityResults) {
+      if (!result.available) {
+        const room = roomMap.get(roomId);
+        unavailableRooms.push(room?.name || roomId);
+      }
+    }
+    
+    if (unavailableRooms.length > 0) {
+      return { 
+        success: false, 
+        error: `The following room(s) are not available for the selected dates: ${unavailableRooms.join(', ')}. Please choose different dates.` 
+      };
+    }
 
     // Calculate totals
     let subtotal = 0;
@@ -146,11 +175,17 @@ export async function createBooking(
       }
     });
 
+    // Generate verification token for guest checkout
+    const { token: verificationToken, expiresAt: tokenExpiresAt } = 
+      await generateVerificationToken(booking.id);
+
     return {
       success: true,
       bookingId: booking.id,
       shortRef: booking.shortRef,
-      totalAmount: Number(totalAmount)
+      totalAmount: Number(totalAmount),
+      verificationToken,
+      tokenExpiresAt
     };
 
   } catch (error) {

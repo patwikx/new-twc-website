@@ -4,17 +4,48 @@
  * @type {string[]}
  */
 export const publicRoutes = [
+  // Landing & Marketing Pages
   "/",
-  "/properties",
+  "/about",
+  "/careers",
+  "/contact",
   "/dining",
   "/events",
   "/experiences",
-  "/contact"
+  "/privacy",
+  "/terms",
+  
+  // Property Browsing (public catalog)
+  "/properties",
+  
+  // Booking Flow (guest checkout allowed)
+  "/book",
+  "/cart",
+  "/payment/success",
+  
+  // Guest Booking Lookup (no auth required)
+  "/bookings/lookup",
+];
+
+/**
+ * An array of route prefixes that are accessible to the public
+ * Any route starting with these prefixes does not require authentication
+ * @type {string[]}
+ */
+export const publicRoutePrefixes = [
+  // Property detail pages (dynamic routes)
+  "/properties/",
+  
+  // Booking confirmation (accessible via ref/id)
+  "/book/confirmation",
+  
+  // Guest booking lookup with token
+  "/bookings/lookup/",
 ];
 
 /**
  * An array of routes that are used for authentication
- * These routes will redirect logged in users to /settings
+ * These routes will redirect logged in users to /
  * @type {string[]}
  */
 export const authRoutes = [
@@ -31,6 +62,19 @@ export const authRoutes = [
  * @type {string}
  */
 export const apiAuthPrefix = "/api/auth";
+
+/**
+ * API routes that should be publicly accessible (no auth required)
+ * @type {string[]}
+ */
+export const publicApiRoutes = [
+  "/api/email",
+  "/api/contact",
+  "/api/newsletter",
+  "/api/bookings/status",
+  "/api/payments/create-checkout",
+  "/api/webhooks/paymongo",
+];
 
 /**
  * The default redirect path after logging in

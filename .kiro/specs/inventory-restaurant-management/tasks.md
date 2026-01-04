@@ -1,0 +1,424 @@
+# Implementation Plan: Inventory & Restaurant Management System
+
+## Overview
+
+This implementation plan breaks down the inventory management system into incremental tasks, starting with the database schema and core services, then building up to the UI components. Each task builds on previous work and includes property-based tests for critical business logic.
+
+## Tasks
+
+- [x] 1. Database Schema Setup
+  - [x] 1.1 Add inventory-related models to Prisma schema
+    - Add Warehouse, StockItem, UnitOfMeasure, Supplier models
+    - Add StockLevel, StockParLevel, StockMovement models
+    - Add StockBatch, WasteRecord models
+    - Add all enums (WarehouseType, StockCategory, MovementType, WasteType)
+    - _Requirements: 1.1, 1.3, 2.1, 3.1, 10.1, 11.1_
+  - [x] 1.2 Add requisition models to Prisma schema
+    - Add Requisition, RequisitionItem models
+    - Add RequisitionStatus enum
+    - _Requirements: 4.1, 4.2_
+  - [x] 1.3 Add recipe and menu models to Prisma schema
+    - Add Recipe, RecipeIngredient, RecipeSubRecipe models
+    - Add MenuItem, COGSRecord models
+    - Add MenuCategory enum
+    - _Requirements: 5.1, 5.3, 6.1_
+  - [x] 1.4 Add housekeeping models to Prisma schema
+    - Add LinenItem model
+    - Add LinenType, LinenStatus, LinenCondition enums
+    - _Requirements: 8.1, 8.3_
+  - [x] 1.5 Add consignment models to Prisma schema
+    - Add ConsignmentReceipt, ConsignmentReceiptItem models
+    - Add ConsignmentSale, ConsignmentSettlement models
+    - _Requirements: 9.1, 9.2_
+  - [x] 1.6 Update Property model with inventory relations
+    - Add relations to Warehouse, StockItem, MenuItem
+    - Run prisma generate and migrate
+    - _Requirements: 1.1_
+
+- [x] 2. Core Services - Unit of Measure and Suppliers
+  - [x] 2.1 Create UnitOfMeasure service
+    - Implement CRUD operations for units
+    - Implement unit conversion function with conversion factors
+    - Create seed data for common units (kg, g, L, mL, pc)
+    - _Requirements: 2.3_
+  - [ ]* 2.2 Write property test for unit conversion
+    - **Property 6: Unit Conversion Accuracy**
+    - Test round-trip conversion preserves value
+    - **Validates: Requirements 2.3**
+  - [x] 2.3 Create Supplier service
+    - Implement CRUD operations for suppliers
+    - _Requirements: 2.4, 9.1_
+
+- [x] 3. Warehouse Management Service
+  - [x] 3.1 Create Warehouse service
+    - Implement create, getById, getByProperty, update, deactivate
+    - Validate warehouse type enum
+    - Ensure unique name per property
+    - _Requirements: 1.1, 1.2, 1.3, 1.5_
+  - [ ]* 3.2 Write property tests for warehouse management
+    - **Property 1: Warehouse Creation Completeness**
+    - **Property 2: Warehouse Type Validation**
+    - **Property 3: Warehouse Deactivation Preserves History**
+    - **Validates: Requirements 1.1, 1.2, 1.3, 1.5**
+
+- [x] 4. Stock Item Catalog Service
+  - [x] 4.1 Create StockItem service
+    - Implement CRUD operations for stock items
+    - Validate required fields (name, category, primaryUnitId)
+    - Validate consignment items require supplierId
+    - Implement par level management
+    - _Requirements: 2.1, 2.2, 2.4, 2.5_
+  - [ ]* 4.2 Write property tests for stock item validation
+    - **Property 4: Stock Category Validation**
+    - **Property 5: Stock Item Required Fields**
+    - **Property 7: Consignment Items Require Supplier**
+    - **Validates: Requirements 2.1, 2.2, 2.4**
+  - [x] 4.3 Implement low-stock alert generation
+    - Query items where quantity < parLevel
+    - Return structured alert objects
+    - _Requirements: 2.6_
+  - [ ]* 4.4 Write property test for low-stock alerts
+    - **Property 8: Low Stock Alert Generation**
+    - **Validates: Requirements 2.6**
+
+- [x] 5. Checkpoint - Core catalog complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Stock Movement Service
+  - [x] 6.1 Create StockMovement service - Receipt
+    - Implement receiveStock function
+    - Create StockMovement record with RECEIPT type
+    - Update StockLevel quantity (create if not exists)
+    - Calculate and update weighted average cost
+    - _Requirements: 3.1, 3.2, 3.6_
+  - [ ]* 6.2 Write property tests for stock receipt
+    - **Property 9: Stock Movement Required Fields**
+    - **Property 10: Stock Receipt Increases Quantity**
+    - **Property 13: Weighted Average Cost Calculation**
+    - **Validates: Requirements 3.1, 3.2, 3.6**
+  - [x] 6.3 Create StockMovement service - Transfer
+    - Implement transferStock function with transaction
+    - Create paired TRANSFER_OUT and TRANSFER_IN movements
+    - Update both warehouse stock levels atomically
+    - Validate sufficient stock in source warehouse
+    - _Requirements: 3.3_
+  - [ ]* 6.4 Write property test for stock transfer conservation
+    - **Property 11: Stock Transfer Conservation (Invariant)**
+    - Test total quantity unchanged after transfer
+    - **Validates: Requirements 3.3**
+  - [x] 6.5 Create StockMovement service - Consumption and Adjustment
+    - Implement consumeStock function
+    - Implement adjustStock function requiring reason
+    - _Requirements: 3.4, 3.5_
+  - [ ]* 6.6 Write property test for adjustment validation
+    - **Property 12: Stock Adjustment Requires Reason**
+    - **Validates: Requirements 3.5**
+
+- [x] 7. Batch/Lot Tracking Service
+  - [x] 7.1 Create StockBatch service
+    - Implement createBatch on receipt
+    - Implement getBatchesByItem
+    - Implement getNextBatchFEFO (earliest expiration first)
+    - Implement consumeFromBatch
+    - _Requirements: 10.1, 10.2, 10.3_
+  - [ ]* 7.2 Write property tests for batch tracking
+    - **Property 37: Batch Receipt Creates Batch Record**
+    - **Property 38: Batch Quantity Tracking**
+    - **Property 39: FEFO Consumption Order**
+    - **Validates: Requirements 10.1, 10.2, 10.3**
+  - [x] 7.3 Implement expiration alerts and expired batch handling
+    - Implement getExpiringBatches with threshold
+    - Implement markExpired function
+    - Exclude expired batches from available stock
+    - _Requirements: 10.4, 10.5_
+  - [ ]* 7.4 Write property tests for expiration handling
+    - **Property 40: Expiration Alert Generation**
+    - **Property 41: Expired Batch Exclusion**
+    - **Validates: Requirements 10.4, 10.5**
+
+- [x] 8. Waste Tracking Service
+  - [x] 8.1 Create WasteRecord service
+    - Implement recordWaste function
+    - Validate waste type enum
+    - Decrease stock quantity on waste
+    - Calculate cost from batch or weighted average
+    - _Requirements: 11.1, 11.2, 11.3, 11.4_
+  - [ ]* 8.2 Write property tests for waste tracking
+    - **Property 42: Waste Type Validation**
+    - **Property 43: Waste Record Required Fields**
+    - **Property 44: Waste Decreases Stock**
+    - **Property 45: Waste Cost Calculation**
+    - **Validates: Requirements 11.1, 11.2, 11.3, 11.4**
+  - [x] 8.3 Implement waste reporting
+    - Implement generateWasteReport
+    - Calculate waste percentage
+    - Group by type and item
+    - _Requirements: 11.5, 11.6_
+  - [ ]* 8.4 Write property test for waste percentage
+    - **Property 46: Waste Percentage Calculation**
+    - **Validates: Requirements 11.6**
+
+- [x] 9. Checkpoint - Stock management complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 10. Requisition Service
+  - [x] 10.1 Create Requisition service
+    - Implement create with validation
+    - Implement approve, reject functions
+    - Implement status transitions
+    - _Requirements: 4.1, 4.2_
+  - [ ]* 10.2 Write property tests for requisition validation
+    - **Property 14: Requisition Required Fields**
+    - **Property 15: Requisition Status Validation**
+    - **Validates: Requirements 4.1, 4.2**
+  - [x] 10.3 Implement requisition fulfillment
+    - Implement fulfill function with partial support
+    - Auto-create stock transfers on fulfillment
+    - Handle insufficient stock with available quantities
+    - _Requirements: 4.3, 4.4, 4.5_
+  - [ ]* 10.4 Write property tests for requisition fulfillment
+    - **Property 16: Requisition Fulfillment Creates Transfers**
+    - **Property 17: Insufficient Stock Fulfillment Error**
+    - **Validates: Requirements 4.4, 4.5**
+
+- [x] 11. Recipe Service
+  - [x] 11.1 Create Recipe service
+    - Implement CRUD operations
+    - Validate ingredients exist in catalog
+    - Support sub-recipes
+    - _Requirements: 6.1, 6.2, 6.6_
+  - [ ]* 11.2 Write property tests for recipe validation
+    - **Property 22: Recipe Required Ingredients**
+    - **Property 23: Recipe Ingredient Validation**
+    - **Validates: Requirements 6.1, 6.2**
+  - [x] 11.3 Implement recipe cost calculation
+    - Calculate total cost from ingredients
+    - Use weighted average cost from warehouse
+    - Calculate cost per portion
+    - _Requirements: 6.3, 7.1, 7.2, 7.3_
+  - [ ]* 11.4 Write property tests for recipe cost calculation
+    - **Property 24: Recipe Cost Calculation (COGS Formula)**
+    - **Property 25: Cost Per Portion Calculation**
+    - **Validates: Requirements 6.3, 7.1, 7.2, 7.3**
+  - [x] 11.5 Implement recipe availability check
+    - Check all ingredients have sufficient stock
+    - Account for sub-recipe ingredients
+    - _Requirements: 5.5_
+  - [ ]* 11.6 Write property test for recipe availability
+    - **Property 21: Menu Availability Based on Stock**
+    - **Validates: Requirements 5.5**
+
+- [x] 12. Menu Item Service
+  - [x] 12.1 Create MenuItem service
+    - Implement CRUD operations
+    - Validate required fields
+    - Associate with recipes
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [ ]* 12.2 Write property tests for menu item validation
+    - **Property 18: Menu Item Required Fields**
+    - **Property 19: Menu Category Validation**
+    - **Validates: Requirements 5.1, 5.3**
+  - [x] 12.3 Implement menu availability and COGS tracking
+    - Set unavailable with reason
+    - Calculate food cost percentage
+    - Record COGS on sale
+    - _Requirements: 5.4, 7.4, 7.5, 7.6_
+  - [ ]* 12.4 Write property tests for COGS and profitability
+    - **Property 20: Menu Unavailability Tracking**
+    - **Property 26: Food Cost Percentage Calculation**
+    - **Property 27: COGS Snapshot at Sale Time**
+    - **Property 28: Food Cost Alert Threshold**
+    - **Validates: Requirements 5.4, 7.4, 7.5, 7.6**
+
+- [x] 13. Checkpoint - Recipe and menu complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 14. Housekeeping Service
+  - [x] 14.1 Create LinenItem service
+    - Implement CRUD operations
+    - Validate required attributes
+    - _Requirements: 8.1_
+  - [ ]* 14.2 Write property tests for housekeeping validation
+    - **Property 29: Linen Required Attributes**
+    - **Property 31: Linen Status Validation**
+    - **Validates: Requirements 8.1, 8.3**
+  - [x] 14.3 Implement linen lifecycle operations
+    - Implement issueToRoom, returnFromRoom
+    - Implement sendToLaundry, receiveFromLaundry
+    - Implement markDamaged, retire
+    - _Requirements: 8.2, 8.4_
+  - [ ]* 14.4 Write property tests for linen lifecycle
+    - **Property 30: Linen Room Assignment Tracking**
+    - **Property 32: Linen Damage Recording**
+    - **Validates: Requirements 8.2, 8.4**
+
+- [x] 15. Consignment Service
+  - [x] 15.1 Create Consignment service
+    - Implement receiveConsignment
+    - Implement recordSale
+    - Implement returnToSupplier
+    - _Requirements: 9.1, 9.3, 9.5_
+  - [ ]* 15.2 Write property tests for consignment operations
+    - **Property 33: Consignment Receipt Required Fields**
+    - **Property 34: Consignment Separation**
+    - **Property 35: Consignment Sale Payment Calculation**
+    - **Property 36: Consignment Return Updates Quantity**
+    - **Validates: Requirements 9.1, 9.2, 9.3, 9.5**
+  - [x] 15.3 Implement consignment settlement
+    - Generate settlement reports per supplier
+    - Calculate total supplier due
+    - _Requirements: 9.4_
+
+- [x] 16. Checkpoint - All services complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 17. Reporting Services
+  - [x] 17.1 Create inventory reporting service
+    - Stock valuation report
+    - Stock movement history report
+    - Low-stock alerts report
+    - Batch expiration report
+    - _Requirements: 12.1, 12.2, 12.4, 12.6_
+  - [x] 17.2 Create COGS and profitability reporting
+    - COGS report per menu item
+    - Recipe profitability report
+    - Waste analysis report
+    - _Requirements: 12.3, 12.5, 12.7_
+
+- [x] 18. Admin UI - Warehouse Management
+  - [x] 18.1 Create warehouse list page
+    - Display warehouses with stock summary
+    - Add/edit/deactivate actions
+    - Route: /admin/inventory/warehouses
+    - _Requirements: 1.1, 1.4, 1.5_
+  - [x] 18.2 Create warehouse detail/form page
+    - Form for name, type selection
+    - Stock levels table
+    - Route: /admin/inventory/warehouses/[id]
+    - _Requirements: 1.1, 1.4_
+
+- [x] 19. Admin UI - Stock Items
+  - [x] 19.1 Create stock item list page
+    - Display items with category filter
+    - Show current stock levels
+    - Route: /admin/inventory/items
+    - _Requirements: 2.1, 2.2_
+  - [x] 19.2 Create stock item form page
+    - Form for item details, unit, category
+    - Consignment supplier selection
+    - Par level settings
+    - Route: /admin/inventory/items/[id]
+    - _Requirements: 2.2, 2.4, 2.5_
+
+- [x] 20. Admin UI - Stock Movements
+  - [x] 20.1 Create stock receipt page
+    - Form for receiving stock with batch info
+    - Route: /admin/inventory/receive
+    - _Requirements: 3.2, 10.1_
+  - [x] 20.2 Create stock transfer page
+    - Source/destination warehouse selection
+    - Item and quantity selection
+    - Route: /admin/inventory/transfer
+    - _Requirements: 3.3_
+  - [x] 20.3 Create stock adjustment page
+    - Adjustment form with reason
+    - Route: /admin/inventory/adjust
+    - _Requirements: 3.5_
+  - [x] 20.4 Create waste recording page
+    - Waste type selection
+    - Batch selection (optional)
+    - Route: /admin/inventory/waste
+    - _Requirements: 11.2_
+
+- [x] 21. Admin UI - Requisitions
+  - [x] 21.1 Create requisition list page
+    - Display requisitions with status filter
+    - Route: /admin/inventory/requisitions
+    - _Requirements: 4.1, 4.2_
+  - [x] 21.2 Create requisition form page
+    - Item selection with quantities
+    - Route: /admin/inventory/requisitions/new
+    - _Requirements: 4.1_
+  - [x] 21.3 Create requisition approval/fulfillment page
+    - Approve/reject actions
+    - Partial fulfillment support
+    - Route: /admin/inventory/requisitions/[id]
+    - _Requirements: 4.3, 4.4_
+
+- [x] 22. Checkpoint - Inventory UI complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 23. Admin UI - Menu Management
+  - [x] 23.1 Create menu item list page
+    - Display items by category
+    - Show availability and cost %
+    - Route: /admin/restaurant/menu
+    - _Requirements: 5.1, 5.3_
+  - [x] 23.2 Create menu item form page
+    - Form for item details
+    - Recipe association
+    - Route: /admin/restaurant/menu/[id]
+    - _Requirements: 5.1, 5.2_
+
+- [x] 24. Admin UI - Recipe Management
+  - [x] 24.1 Create recipe list page
+    - Display recipes with cost summary
+    - Route: /admin/restaurant/recipes
+    - _Requirements: 6.1_
+  - [x] 24.2 Create recipe form page
+    - Ingredient list with quantities
+    - Sub-recipe support
+    - Cost calculation display
+    - Route: /admin/restaurant/recipes/[id]
+    - _Requirements: 6.1, 6.3, 6.6_
+
+- [x] 25. Admin UI - Housekeeping
+  - [x] 25.1 Create housekeeping inventory page
+    - Display linens by status
+    - Issue/return actions
+    - Route: /admin/housekeeping/linens
+    - _Requirements: 8.1, 8.2, 8.3_
+  - [x] 25.2 Create housekeeping lifecycle actions
+    - Send to laundry
+    - Mark damaged
+    - Retire
+    - _Requirements: 8.2, 8.4_
+
+- [x] 26. Admin UI - Consignment Management
+  - [x] 26.1 Create consignment receipt page
+    - Receive consignment stock
+    - Route: /admin/inventory/consignment/receive
+    - _Requirements: 9.1_
+  - [x] 26.2 Create consignment settlement page
+    - Generate settlement reports
+    - Route: /admin/inventory/consignment/settlements
+    - _Requirements: 9.4_
+
+- [ ] 27. Admin UI - Reports Dashboard
+  - [x] 27.1 Create inventory reports page
+    - Stock valuation
+    - Movement history
+    - Low-stock alerts
+    - Expiration alerts
+    - Route: /admin/reports/inventory
+    - _Requirements: 12.1, 12.2, 12.4, 12.6_
+  - [x] 27.2 Create restaurant reports page
+    - COGS analysis
+    - Recipe profitability
+    - Waste analysis
+    - Route: /admin/reports/restaurant
+    - _Requirements: 12.3, 12.5, 12.7_
+
+- [ ] 28. Final Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
+  - Verify all requirements are implemented
+  - Review property test coverage
+
+## Notes
+
+- Tasks marked with `*` are optional property-based tests that can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties
+- Unit tests validate specific examples and edge cases
+- The implementation follows the existing Next.js/Prisma patterns in the codebase

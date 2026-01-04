@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { PasswordSchema, PASSWORD_ERRORS } from "./password";
 
 export const LoginSchema = z.object({
   email: z.string().email({
@@ -13,9 +14,7 @@ export const RegisterSchema = z.object({
   email: z.string().email({
     message: "Email is required",
   }),
-  password: z.string().min(6, {
-    message: "Minimum 6 characters required",
-  }),
+  password: PasswordSchema,
   name: z.string().min(1, {
     message: "Name is required",
   }),
@@ -28,9 +27,7 @@ export const ResetSchema = z.object({
 });
 
 export const NewPasswordSchema = z.object({
-  password: z.string().min(6, {
-    message: "Minimum 6 characters required",
-  }),
+  password: PasswordSchema,
   confirmPassword: z.string().min(1, {
     message: "Confirm password is required",
   }),
@@ -48,7 +45,7 @@ export const SettingsSchema = z.object({
   isTwoFactorEnabled: z.optional(z.boolean()),
   email: z.optional(z.string().email()),
   password: z.optional(z.string().min(6)),
-  newPassword: z.optional(z.string().min(6)),
+  newPassword: z.optional(PasswordSchema),
 })
 .refine((data) => {
   if (data.password && !data.newPassword) {
@@ -68,3 +65,6 @@ export const SettingsSchema = z.object({
   message: "Password is required!",
   path: ["password"]
 });
+
+// Re-export password utilities for convenience
+export { PasswordSchema, PASSWORD_ERRORS } from "./password";
