@@ -68,3 +68,14 @@ export const SettingsSchema = z.object({
 
 // Re-export password utilities for convenience
 export { PasswordSchema, PASSWORD_ERRORS } from "./password";
+
+// Re-export phone validation utilities
+export { 
+  PhoneSchema, 
+  OptionalPhoneSchema,
+  PHONE_ERRORS, 
+  validatePhoneNumber, 
+  normalizePhoneNumber,
+  isValidMobile,
+  isValidLandline,
+} from "./phone";

@@ -57,6 +57,13 @@ interface RoomAvailability {
   limitedAvailability: boolean;
 }
 
+/**
+ * Renders a booking widget that lets users select a property, check-in/check-out dates, and guest count; performs bulk availability checks and displays available rooms.
+ *
+ * Performs a POST to /api/availability/bulk to fetch availability for all room types of the selected property, shows results with pricing and remaining units, and allows adding a room to the cart (which triggers a small flyer animation and opens the cart drawer).
+ *
+ * @returns The booking widget UI as JSX.
+ */
 export function BookingWidget({ properties }: BookingWidgetProps) {
   // Normalize today to midnight to avoid time comparison issues
   const today = new Date();
@@ -421,16 +428,13 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
 }
 
 /**
- * Filter and map room types to only include those with available units.
- * 
- * This function:
- * 1. Filters out room types with availableUnits <= 0
- * 2. Maps room data with availability information
- * 3. Sets limitedAvailability flag when availableUnits <= 2
- * 
- * @param rooms - Array of room types from the property
- * @param availabilityResults - Array of availability results from the API
- * @returns Array of RoomAvailability objects for rooms with available units
+ * Produce RoomAvailability entries for rooms that have available units.
+ *
+ * Merges each room's static data with its matching availability result and excludes rooms with no available units.
+ *
+ * @param rooms - Property room types to evaluate
+ * @param availabilityResults - Availability data keyed by `roomTypeId`, including `availableUnits`, `totalUnits`, and `limitedAvailability`
+ * @returns Array of `RoomAvailability` objects for rooms with `availableUnits` greater than zero
  */
 export function filterAvailableRooms(
   rooms: { id: string; name: string; image: string; price: number; capacity: number }[],
@@ -461,4 +465,3 @@ export function filterAvailableRooms(
     })
     .filter((room): room is RoomAvailability => room !== null);
 }
-

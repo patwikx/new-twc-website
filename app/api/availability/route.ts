@@ -10,9 +10,34 @@
 
 import { NextResponse } from "next/server";
 import { checkUnitAvailability, UnitAvailabilityResult } from "@/lib/booking/availability";
+import { checkLimit } from "@/lib/rate-limit";
+import { getClientIP } from "@/lib/client-ip";
 
+/**
+ * Handles GET requests to check availability for a single room type within a date range.
+ *
+ * @returns A JSON response containing a `UnitAvailabilityResult` for the requested `roomTypeId` when successful; if the room type is not found, returns a `UnitAvailabilityResult` with zero units and `available: false`. Returns 400 with an error message for missing or invalid query parameters (roomTypeId, checkIn, checkOut, or invalid/ordered dates), and 500 with a generic error message on unexpected failures.
+ */
 export async function GET(request: Request) {
   try {
+    // Rate limiting check - 30 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 30,
+      windowMs: 60 * 1000,
+      keyPrefix: 'availability'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const roomTypeId = searchParams.get("roomTypeId");
     const checkInParam = searchParams.get("checkIn");

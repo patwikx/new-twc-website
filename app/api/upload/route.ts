@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { minioClient, DOCUMENTS_BUCKET, generateFileName, initializeBucket } from '@/lib/minio';
+import { auth } from '@/auth';
 
 export async function POST(request: NextRequest) {
     try {
+      // Validate session - require authenticated admin user
+      const session = await auth();
+      
+      if (!session?.user) {
+        return NextResponse.json(
+          { error: 'Authentication required' },
+          { status: 401 }
+        );
+      }
+      
+      // Only allow admin users to upload files
+      if (session.user.role !== 'ADMIN') {
+        return NextResponse.json(
+          { error: 'Forbidden' },
+          { status: 403 }
+        );
+      }
+      
       // Initialize bucket if needed
       await initializeBucket();
       

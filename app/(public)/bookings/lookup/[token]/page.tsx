@@ -13,7 +13,7 @@ interface TokenLookupPageProps {
  * - Displays booking details if token is valid
  * - Redirects to manual lookup if token is invalid/expired
  * 
- * Requirements: 3.3, 3.4
+ * Requirements: 3.3, 3.4, 10.1
  */
 export default async function TokenLookupPage({ params }: TokenLookupPageProps) {
   const { token } = await params;
@@ -31,11 +31,11 @@ export default async function TokenLookupPage({ params }: TokenLookupPageProps) 
     redirect("/bookings/lookup");
   }
 
-  // Token valid - display booking details (Requirement 3.3)
+  // Token valid - display booking details with token for cancellation (Requirement 3.3, 10.1)
   return (
     <div className="min-h-screen bg-black w-full">
       <div className="pt-32 pb-20 px-6 md:px-10">
-        <BookingDetailsCard booking={result.booking} />
+        <BookingDetailsCard booking={result.booking} verificationToken={token} />
       </div>
     </div>
   );

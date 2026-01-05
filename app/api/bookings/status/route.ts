@@ -2,9 +2,29 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCheckoutSession } from "@/lib/paymongo";
 import { sendBookingConfirmationEmail } from "@/lib/mail";
+import { checkLimit } from "@/lib/rate-limit";
+import { getClientIP } from "@/lib/client-ip";
 
 export async function GET(request: Request) {
   try {
+    // Rate limiting check - 10 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 10,
+      windowMs: 60 * 1000,
+      keyPrefix: 'booking-status'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+    
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

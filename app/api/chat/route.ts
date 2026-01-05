@@ -1,41 +1,35 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkLimit } from "@/lib/rate-limit";
+import { getClientIP } from "@/lib/client-ip";
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
-// Rate Limiting Logic (Simple In-Memory)
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const MAX_REQUESTS = 10; // 10 requests per minute
-const requestCounts = new Map<string, { count: number, resetTime: number }>();
-
-function isRateLimited(ip: string) {
-  const now = Date.now();
-  const record = requestCounts.get(ip);
-  
-  if (!record || now > record.resetTime) {
-    requestCounts.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return false;
-  }
-  
-  if (record.count >= MAX_REQUESTS) return true;
-  
-  record.count++;
-  return false;
-}
-
 export async function POST(req: Request) {
   try {
-    const { message, propertyName } = await req.json();
-
-    // 1. Rate Limiting Check
-    const ip = req.headers.get("x-forwarded-for") || "unknown";
-    if (isRateLimited(ip)) {
-      return NextResponse.json({ reply: "You're sending messages too quickly. Please wait a minute." }, { status: 429 });
+    // Rate limiting check - 10 requests per 60 seconds
+    const clientIP = getClientIP(req);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 10,
+      windowMs: 60 * 1000,
+      keyPrefix: 'chat'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          reply: `You're sending messages too quickly. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
     }
+
+    const { message, propertyName } = await req.json();
 
     // 2. Input Validation
     if (!message || typeof message !== 'string') {

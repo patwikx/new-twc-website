@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { checkLimit } from '@/lib/rate-limit';
+import { getClientIP } from '@/lib/client-ip';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -16,6 +18,24 @@ const ContactSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // Rate limiting check - 5 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 5,
+      windowMs: 60 * 1000,
+      keyPrefix: 'contact-form'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+    
     if (!process.env.RESEND_API_KEY) {
         console.error("CRITICAL: RESEND_API_KEY is not set!");
         return NextResponse.json({ error: "Server configuration error: Email service not configured." }, { status: 500 });

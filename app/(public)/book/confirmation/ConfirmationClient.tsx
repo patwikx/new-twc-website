@@ -43,10 +43,12 @@ interface SerializedBooking {
 
 export default function ConfirmationClient({ 
   booking: initialBooking,
-  config = { taxRate: 0.12, serviceChargeRate: 0.10 } // Default fallback
+  config = { taxRate: 0.12, serviceChargeRate: 0.10 }, // Default fallback
+  verificationToken
 }: { 
   booking: SerializedBooking;
   config?: { taxRate: number; serviceChargeRate: number };
+  verificationToken?: string;
 }) {
   // Use state to track current status, initialized with server data
   const [currentStatus, setCurrentStatus] = useState(initialBooking.status);

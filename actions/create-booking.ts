@@ -37,6 +37,13 @@ type CreateBookingResult =
       code?: 'AVAILABILITY_CHANGED' | 'ROOM_UNAVAILABLE' | 'VALIDATION_ERROR';
     };
 
+/**
+ * Create a booking from cart items and guest details, performing atomic availability checks and returning either booking information or a structured failure.
+ *
+ * @param cartItems - Array of items to book; each item must include `roomId`, `checkIn`, `checkOut`, and `guests`.
+ * @param guestDetails - Guest contact information and optional `specialRequests` used for the booking record.
+ * @returns On success: an object containing `success: true`, `bookingId`, `shortRef`, `totalAmount`, `verificationToken`, and `tokenExpiresAt`. On failure: an object containing `success: false`, an `error` message, and optional `code` set to `'AVAILABILITY_CHANGED' | 'ROOM_UNAVAILABLE' | 'VALIDATION_ERROR'`.
+ */
 export async function createBooking(
   cartItems: CartItem[],
   guestDetails: GuestDetails

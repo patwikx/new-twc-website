@@ -10,9 +10,10 @@ interface CompletePaymentButtonProps {
   bookingId: string;
   className?: string;
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+  verificationToken?: string;
 }
 
-export function CompletePaymentButton({ bookingId, className, variant = "default" }: CompletePaymentButtonProps) {
+export function CompletePaymentButton({ bookingId, className, variant = "default", verificationToken }: CompletePaymentButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePayment = async () => {
@@ -23,7 +24,7 @@ export function CompletePaymentButton({ bookingId, className, variant = "default
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ bookingId }),
+        body: JSON.stringify({ bookingId, verificationToken }),
       });
 
       const data = await response.json();
