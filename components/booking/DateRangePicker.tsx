@@ -30,10 +30,15 @@ export interface DateRangePickerProps {
 }
 
 /**
- * DateRangePicker using two separate DayPicker components for check-in and check-out.
- * Uses onDayClick for proper toggle/deselection behavior.
- * 
- * Requirements: 2.2, 2.3, 2.4, 2.5
+ * Renders a dual-calendar date range picker with separate check-in and check-out DayPicker calendars.
+ *
+ * The check-in calendar disables dates before today. The check-out calendar disables dates before the day after the selected check-in (or today if no check-in). Clicking an already-selected check-in or check-out date clears that selection. Selecting a new check-in on or after the current check-out clears the check-out.
+ *
+ * @param className - Optional container className applied to the outer wrapper
+ * @param date - The currently selected date range (`from` and/or `to`)
+ * @param setDate - Setter invoked to update the selected date range
+ * @param loading - When true, shows a loading label in the trigger instead of date text
+ * @returns The DateRangePicker React element
  */
 export function DateRangePicker({
   className,

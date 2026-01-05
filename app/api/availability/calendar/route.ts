@@ -10,6 +10,14 @@
 import { NextResponse } from "next/server";
 import { getDateRangeAvailability } from "@/lib/booking/availability";
 
+/**
+ * Return daily availability data for the specified room type and month.
+ *
+ * The request URL must include `roomTypeId` and `month` search parameters.
+ *
+ * @param request - Incoming Request whose URL search params must include `roomTypeId` and `month` (format: `YYYY-MM`)
+ * @returns An array of daily availability objects (`DateAvailability[]`) covering the requested month
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

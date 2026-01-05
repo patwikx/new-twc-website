@@ -125,17 +125,15 @@ export async function isRoomAvailable(
 }
 
 /**
- * Check if dates overlap using the standard overlap formula.
- * Pure function for testing purposes.
- * 
- * Two date ranges overlap if:
- * range1Start < range2End AND range1End > range2Start
- * 
- * @param start1 - Start of first range
- * @param end1 - End of first range
- * @param start2 - Start of second range
- * @param end2 - End of second range
- * @returns true if the ranges overlap
+ * Determines whether two date ranges overlap.
+ *
+ * Two ranges overlap when `start1 < end2` and `end1 > start2`.
+ *
+ * @param start1 - Start of the first range
+ * @param end1 - End of the first range
+ * @param start2 - Start of the second range
+ * @param end2 - End of the second range
+ * @returns `true` if the ranges overlap, `false` otherwise
  */
 export function datesOverlap(
   start1: Date,
@@ -148,16 +146,12 @@ export function datesOverlap(
 
 
 /**
- * Check unit-based availability for room types.
- * 
- * For each room type, calculates:
- * - Total active units
- * - Number of overlapping bookings (CONFIRMED or PENDING)
- * - Available units = total - booked
- * - Availability flags
- * 
- * @param checks - Array of unit availability checks
- * @returns Map of roomTypeId to unit availability result
+ * Compute unit-level availability for the specified room types.
+ *
+ * For each check, derives the total active units for the room type, counts overlapping bookings with status `CONFIRMED` or `PENDING` that intersect the requested date range, and produces booked/available unit counts and availability flags.
+ *
+ * @param checks - Array of unit availability checks (each includes a roomTypeId, checkIn, and checkOut)
+ * @returns A map from `roomTypeId` to `UnitAvailabilityResult` containing `totalUnits`, `bookedUnits`, `availableUnits`, `available`, and `limitedAvailability`
  */
 export async function checkUnitAvailability(
   checks: UnitAvailabilityCheck[]
@@ -238,12 +232,14 @@ export async function checkUnitAvailability(
 }
 
 /**
- * Calculate unit availability from raw counts.
- * Pure function for testing purposes.
- * 
- * @param totalUnits - Total number of active units
+ * Compute available unit count and availability flags from total and booked units.
+ *
+ * @param totalUnits - Total number of active units for the room type
  * @param bookedUnits - Number of units with overlapping bookings
- * @returns Calculated availability metrics
+ * @returns An object containing:
+ *  - `availableUnits`: number of units available (zero if total minus booked is negative),
+ *  - `available`: `true` if `availableUnits` > 0, `false` otherwise,
+ *  - `limitedAvailability`: `true` if `availableUnits` is 1 or 2, `false` otherwise
  */
 export function calculateUnitAvailability(
   totalUnits: number,
@@ -342,17 +338,16 @@ export async function getDateRangeAvailability(
 }
 
 /**
- * Classify date availability status based on available and total units.
- * Pure function for testing purposes.
- * 
- * Classification rules:
- * - 'unavailable': availableUnits = 0
- * - 'limited': availableUnits > 0 AND availableUnits < (totalUnits * 0.5)
- * - 'available': otherwise
- * 
- * @param availableUnits - Number of available units
- * @param totalUnits - Total number of units
- * @returns Status classification
+ * Determine the availability status for a single date based on available and total units.
+ *
+ * Classification:
+ * - `'unavailable'` when `availableUnits` is 0
+ * - `'limited'` when `availableUnits` > 0 and less than half of `totalUnits`
+ * - `'available'` otherwise
+ *
+ * @param availableUnits - Number of available units for the date
+ * @param totalUnits - Total number of units for the room type
+ * @returns The status: `'available'`, `'limited'`, or `'unavailable'`
  */
 export function classifyDateAvailability(
   availableUnits: number,
@@ -370,10 +365,10 @@ export function classifyDateAvailability(
 }
 
 /**
- * Check if a date range has any unavailable dates.
- * 
- * @param availability - Array of daily availability data
- * @returns true if any date is unavailable
+ * Determine whether any day in the provided availability range is marked unavailable.
+ *
+ * @param availability - Array of daily availability entries to inspect
+ * @returns `true` if any day has status `'unavailable'`, `false` otherwise
  */
 export function hasUnavailableDates(availability: DateAvailability[]): boolean {
   return availability.some(day => day.status === 'unavailable');
@@ -403,19 +398,13 @@ export interface BookingValidationSummary {
 }
 
 /**
- * Validate booking items against availability data.
- * Pure function for testing purposes.
- * 
- * For each booking item, checks if the room type has available units.
- * Returns validation results for each item independently.
- * 
- * Property 5: Booking Validation Consistency
- * - For any booking attempt where availableUnits = 0, the system SHALL reject
- * - In cart mode, each item SHALL be validated independently
- * 
- * @param items - Array of booking items to validate
- * @param availabilityMap - Map of roomTypeId to availability result
- * @returns Validation summary with per-item results
+ * Validate each booking item against per-room-type availability.
+ *
+ * Each item is validated independently using `availabilityMap`; missing availability data is treated as unavailable.
+ *
+ * @param items - Booking items to validate (each must include `itemId` and `roomTypeId`)
+ * @param availabilityMap - Map of `roomTypeId` to `UnitAvailabilityResult` used to determine availability per item
+ * @returns A summary containing per-item validation results, an `allValid` flag, and the count of invalid items
  */
 export function validateBookingItems(
   items: BookingValidationItem[],
@@ -468,11 +457,10 @@ export function validateBookingItems(
 }
 
 /**
- * Check if a single booking can proceed based on availability.
- * Pure function for testing purposes.
- * 
- * @param availableUnits - Number of available units
- * @returns true if booking can proceed
+ * Determines whether a booking can proceed given the number of available units.
+ *
+ * @param availableUnits - Number of available units for the room type
+ * @returns `true` if at least one unit is available, `false` otherwise.
  */
 export function canProceedWithBooking(availableUnits: number): boolean {
   return availableUnits > 0;
@@ -495,17 +483,12 @@ export interface TransactionalAvailabilityResult {
 }
 
 /**
- * Check unit-based availability within a database transaction.
- * This function is designed to be called within a Prisma transaction
- * to ensure atomicity and prevent race conditions.
- * 
- * Property 6: Concurrent Booking Protection
- * For any N concurrent booking attempts for a room type with M available units
- * where N > M, exactly M bookings SHALL succeed and (N - M) SHALL fail.
- * 
- * @param tx - Prisma transaction client
- * @param checks - Array of availability checks
- * @returns Map of roomTypeId to availability result
+ * Compute unit-level availability for the specified room types within the provided database transaction.
+ *
+ * This function evaluates total units, booked units (considering CONFIRMED and PENDING bookings), and derives available units and availability flags for each requested room type while executing inside a transaction to enable concurrency protection.
+ *
+ * @param checks - Array of availability checks, each specifying a `roomTypeId`, `checkIn`, and `checkOut`
+ * @returns A map from `roomTypeId` to `TransactionalAvailabilityResult` containing `totalUnits`, `bookedUnits`, `availableUnits`, and `available`
  */
 export async function checkUnitAvailabilityInTransaction(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
@@ -608,16 +591,9 @@ export function simulateConcurrentBookings(
 }
 
 /**
- * Calculate availability change after cancellation.
- * Pure function for testing purposes.
- * 
- * Property 7: Cancellation Availability Release
- * For any confirmed booking that is cancelled, the availability
- * for that room type and date range SHALL increase by 1.
- * 
- * @param currentAvailableUnits - Current available units
- * @param totalUnits - Total units for the room type
- * @returns New available units after cancellation
+ * Increase available units by one when a booking is cancelled, capped at the room type's total units.
+ *
+ * @returns The new number of available units after cancellation, not exceeding `totalUnits`.
  */
 export function calculateAvailabilityAfterCancellation(
   currentAvailableUnits: number,

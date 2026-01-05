@@ -11,6 +11,11 @@
 import { NextResponse } from "next/server";
 import { checkUnitAvailability, UnitAvailabilityResult } from "@/lib/booking/availability";
 
+/**
+ * Handles GET requests to check availability for a single room type within a date range.
+ *
+ * @returns A JSON response containing a `UnitAvailabilityResult` for the requested `roomTypeId` when successful; if the room type is not found, returns a `UnitAvailabilityResult` with zero units and `available: false`. Returns 400 with an error message for missing or invalid query parameters (roomTypeId, checkIn, checkOut, or invalid/ordered dates), and 500 with a generic error message on unexpected failures.
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

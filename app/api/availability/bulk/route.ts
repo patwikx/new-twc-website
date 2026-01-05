@@ -14,6 +14,12 @@ interface BulkAvailabilityRequest {
   checks: UnitAvailabilityCheck[];
 }
 
+/**
+ * Handle POST /bulk availability requests by validating input checks and returning unit-based availability per room type.
+ *
+ * @param request - HTTP request whose JSON body must be a BulkAvailabilityRequest: { checks: UnitAvailabilityCheck[] }
+ * @returns An array of UnitAvailabilityResult corresponding to each input check. If a room type is not found its result contains zeros and `available: false`. On malformed input the endpoint responds with a JSON error and HTTP 400; on internal failures it responds with a JSON error and HTTP 500.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json() as BulkAvailabilityRequest;
