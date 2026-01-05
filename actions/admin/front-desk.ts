@@ -122,81 +122,79 @@ export async function checkInBooking(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  // 1. Link Unit to Booking Item
-  const bookingItem = await db.bookingItem.update({
-    where: { id: bookingItemId },
-    data: { roomUnitId: unitId },
-    include: { booking: true }
-  });
+  await db.$transaction(async (tx) => {
+    // 1. Link Unit to Booking Item
+    const bookingItem = await tx.bookingItem.update({
+      where: { id: bookingItemId },
+      data: { roomUnitId: unitId },
+      include: { booking: true }
+    });
 
-  // 2. Update Unit Status to OCCUPIED
-  await db.roomUnit.update({
-    where: { id: unitId },
-    data: { status: "OCCUPIED" },
-  });
+    // 2. Update Unit Status to OCCUPIED
+    await tx.roomUnit.update({
+      where: { id: unitId },
+      data: { status: "OCCUPIED" },
+    });
 
-  // 3. Update Guest Details & ID Scans
-  if (extras) {
-      if (extras.idScans || extras.guestPhone || extras.guestAddress) {
-          // Update User Profile
-          if (bookingItem.booking.guestEmail) {
-              const existingUser = await db.user.findUnique({
-                  where: { email: bookingItem.booking.guestEmail }
-              });
-              if (existingUser) {
-                  await db.user.update({
-                      where: { id: existingUser.id },
-                      data: {
-                          phone: extras.guestPhone || undefined,
-                          address: extras.guestAddress || undefined,
-                          idScans: extras.idScans ? { push: extras.idScans } : undefined 
-                          // Or replace? Usually appending is safer or just set. 
-                          // If using 'push', make sure it's valid for array. 
-                          // Prisma list push: { push: [] } 
-                          // For simplicity, let's just set/merge for now or push.
-                      }
-                  });
-              }
-          }
-          
-          // Update Booking Guest Details (Snapshot)
-          if (extras.guestPhone) {
-             await db.booking.update({
-                where: { id: bookingItem.bookingId },
-                data: { guestPhone: extras.guestPhone }
-             });
-          }
-      }
-
-      // 4. Record Initial Payment (e.g. Security Deposit or Balance)
-      if (extras.initialPayment && extras.initialPayment > 0) {
-          const payment = await db.payment.create({
-              data: {
-                  bookingId: bookingItem.bookingId,
-                  amount: extras.initialPayment,
-                  provider: (extras.initialPaymentMethod as any) || "CASH",
-                  reference: extras.initialPaymentRef,
-                  status: "PAID",
-                  createdById: session.user.id
-              }
-          });
-
-          // Update Booking Financials
-          const booking = await db.booking.findUnique({ where: { id: bookingItem.bookingId } });
-          if (booking) {
-              const newPaid = Number(booking.amountPaid) + extras.initialPayment;
-              const newDue = Number(booking.totalAmount) - newPaid;
-              await db.booking.update({
+    // 3. Update Guest Details & ID Scans
+    if (extras) {
+        if (extras.idScans || extras.guestPhone || extras.guestAddress) {
+            // Update User Profile
+            if (bookingItem.booking.guestEmail) {
+                const existingUser = await tx.user.findUnique({
+                    where: { email: bookingItem.booking.guestEmail }
+                });
+                if (existingUser) {
+                    await tx.user.update({
+                        where: { id: existingUser.id },
+                        data: {
+                            phone: extras.guestPhone || undefined,
+                            address: extras.guestAddress || undefined,
+                           idScans: extras.idScans ? { push: extras.idScans } : undefined 
+                        }
+                    });
+                }
+            }
+            
+            // Update Booking Guest Details (Snapshot)
+            if (extras.guestPhone) {
+               await tx.booking.update({
                   where: { id: bookingItem.bookingId },
-                  data: {
-                      amountPaid: newPaid,
-                      amountDue: newDue,
-                      paymentStatus: newDue <= 0 ? "PAID" : "PARTIALLY_PAID"
-                  }
-              });
-          }
-      }
-  }
+                  data: { guestPhone: extras.guestPhone }
+               });
+            }
+        }
+
+        // 4. Record Initial Payment (e.g. Security Deposit or Balance)
+        if (extras.initialPayment && extras.initialPayment > 0) {
+            await tx.payment.create({
+                data: {
+                    bookingId: bookingItem.bookingId,
+                    amount: extras.initialPayment,
+                    provider: (extras.initialPaymentMethod as any) || "CASH",
+                    reference: extras.initialPaymentRef,
+                    status: "PAID",
+                    createdById: session.user.id
+                }
+            });
+
+            // Update Booking Financials
+            const booking = await tx.booking.findUnique({ where: { id: bookingItem.bookingId } });
+            if (booking) {
+                const newPaid = Number(booking.amountPaid) + extras.initialPayment;
+                const newDue = Number(booking.totalAmount) - newPaid;
+                await tx.booking.update({
+                    where: { id: bookingItem.bookingId },
+                    data: {
+                        amountPaid: newPaid,
+                        amountDue: newDue,
+                        paymentStatus: newDue <= 0 ? "PAID" : "PARTIALLY_PAID"
+                    }
+                });
+            }
+        }
+    }
+  });
 
   revalidatePath("/admin/front-desk");
   return { success: true };
@@ -235,138 +233,137 @@ export async function createWalkIn(data: {
   const firstName = data.guestName.split(" ")[0];
   const lastName = data.guestName.split(" ").slice(1).join(" ") || "Guest";
 
-  // 1. Create/Update User
-  let userId = null;
-  if (data.guestEmail) {
-    const existingUser = await db.user.findUnique({
-      where: { email: data.guestEmail },
-    });
-    
-    if (existingUser) {
-      userId = existingUser.id;
-      // Update extended profile if provided
-      await db.user.update({
-        where: { id: existingUser.id },
-        data: {
-          phone: data.guestPhone || existingUser.phone,
-          address: data.guestAddress || existingUser.address,
-          idScans: data.idScans && data.idScans.length > 0 ? data.idScans : existingUser.idScans
-        }
-      });
-    } else {
-       // Create new user if needed? For now, we only link if exists or just create Booking.
-       // Creating a user requires password usually or careful handling. 
-       // We'll stick to linking if exists. 
-       // Or should we create a "Guest" user?
-       // Let's create a User if email is provided but not found?
-       const newUser = await db.user.create({
-          data: {
-             name: data.guestName,
-             email: data.guestEmail,
-             phone: data.guestPhone,
-             address: data.guestAddress,
-             idScans: data.idScans || [],
-             role: 'GUEST',
-             password: null // No password
-          }
-       });
-       userId = newUser.id;
-    }
-  }
-
-  // 2. Create Booking
-  // Generate a short ref
-  const shortRef = `WK-${Math.random()
-    .toString(36)
-    .substring(2, 8)
-    .toUpperCase()}`;
-
-  // Calculate nights based on provided dates
-  const nights = Math.max(
-    1,
-    Math.ceil(
-      (data.checkOutDate.getTime() - data.checkInDate.getTime()) /
-        (1000 * 60 * 60 * 24)
-    )
-  );
-
-  const roomTotal = data.pricePerNight * nights;
-  const taxAmount = roomTotal * taxRate;
-  const serviceCharge = roomTotal * serviceRate;
-  const addCharges = data.additionalChargeAmount || 0;
-  
-  const totalAmount = roomTotal + taxAmount + serviceCharge + addCharges;
-  const amountDue = totalAmount - data.initialPayment;
-
-  const booking = await db.booking.create({
-    data: {
-      shortRef,
-      userId,
-      guestFirstName: firstName,
-      guestLastName: lastName,
-      guestEmail: data.guestEmail,
-      guestPhone: data.guestPhone || "",
-      totalAmount,
-      taxAmount,
-      serviceCharge,
-      amountPaid: data.initialPayment,
-      amountDue,
-      status: "CONFIRMED",
-      paymentStatus:
-        amountDue <= 0
-          ? "PAID"
-          : data.initialPayment > 0
-          ? "PARTIALLY_PAID"
-          : "UNPAID",
-      propertyId: data.propertyId,
-      createdById: session.user.id,
-
-      // Items
-      items: {
-        create: {
-          roomId: data.roomTypeId,
-          roomUnitId: data.unitId,
-          checkIn: data.checkInDate,
-          checkOut: data.checkOutDate,
-          guests: 1,
-          pricePerNight: data.pricePerNight,
-        },
-      },
-      
-      // Adjustments (Additional Charges)
-      adjustments: addCharges > 0 ? {
-         create: {
-            type: 'CHARGE',
-            amount: addCharges,
-            description: data.additionalChargeDesc || "Additional Charges",
-            createdById: session.user.id
-         }
-      } : undefined,
-
-      // Initial Payment
-      payments:
-        data.initialPayment > 0
-          ? {
-              create: {
-                amount: data.initialPayment,
-                status: "PAID",
-                provider: data.initialPaymentMethod || "CASH",
-                reference: data.initialPaymentRef,
-                createdById: session.user.id,
-              },
+  /* Refactoring to use transaction */
+  return await db.$transaction(async (tx) => {
+      // 1. Create/Update User
+      let userId = null;
+      if (data.guestEmail) {
+        const existingUser = await tx.user.findUnique({
+          where: { email: data.guestEmail },
+        });
+        
+        if (existingUser) {
+          userId = existingUser.id;
+          // Update extended profile if provided
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              phone: data.guestPhone || existingUser.phone,
+              address: data.guestAddress || existingUser.address,
+              idScans: data.idScans && data.idScans.length > 0 ? data.idScans : existingUser.idScans
             }
-          : undefined,
-    },
-  });
+          });
+        } else {
+           const newUser = await tx.user.create({
+              data: {
+                 name: data.guestName,
+                 email: data.guestEmail,
+                 phone: data.guestPhone,
+                 address: data.guestAddress,
+                 idScans: data.idScans || [],
+                 role: 'GUEST',
+                 password: null // No password
+              }
+           });
+           userId = newUser.id;
+        }
+      }
 
-  // 3. Update Unit Status
-  await db.roomUnit.update({
-    where: { id: data.unitId },
-    data: { status: "OCCUPIED" },
+      // 2. Create Booking
+      // Generate a short ref
+      const shortRef = `WK-${Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase()}`;
+
+      // Calculate nights based on provided dates
+      const nights = Math.max(
+        1,
+        Math.ceil(
+          (data.checkOutDate.getTime() - data.checkInDate.getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      );
+
+      const roomTotal = data.pricePerNight * nights;
+      const taxAmount = roomTotal * taxRate;
+      const serviceCharge = roomTotal * serviceRate;
+      const addCharges = data.additionalChargeAmount || 0;
+      
+      const totalAmount = roomTotal + taxAmount + serviceCharge + addCharges;
+      const amountDue = totalAmount - data.initialPayment;
+
+      const booking = await tx.booking.create({
+        data: {
+          shortRef,
+          userId,
+          guestFirstName: firstName,
+          guestLastName: lastName,
+          guestEmail: data.guestEmail,
+          guestPhone: data.guestPhone || "",
+          totalAmount,
+          taxAmount,
+          serviceCharge,
+          amountPaid: data.initialPayment,
+          amountDue,
+          status: "CONFIRMED",
+          paymentStatus:
+            amountDue <= 0
+              ? "PAID"
+              : data.initialPayment > 0
+              ? "PARTIALLY_PAID"
+              : "UNPAID",
+          propertyId: data.propertyId,
+          createdById: session.user.id,
+
+          // Items
+          items: {
+            create: {
+              roomId: data.roomTypeId,
+              roomUnitId: data.unitId,
+              checkIn: data.checkInDate,
+              checkOut: data.checkOutDate,
+              guests: 1,
+              pricePerNight: data.pricePerNight,
+            },
+          },
+          
+          // Adjustments (Additional Charges)
+          adjustments: addCharges > 0 ? {
+             create: {
+                type: 'CHARGE',
+                amount: addCharges,
+                description: data.additionalChargeDesc || "Additional Charges",
+                createdById: session.user.id
+             }
+          } : undefined,
+
+          // Initial Payment
+          payments:
+            data.initialPayment > 0
+              ? {
+                  create: {
+                    amount: data.initialPayment,
+                    status: "PAID",
+                    provider: data.initialPaymentMethod || "CASH",
+                    reference: data.initialPaymentRef,
+                    createdById: session.user.id,
+                  },
+                }
+              : undefined,
+        },
+      });
+
+      // 3. Update Unit Status
+      await tx.roomUnit.update({
+        where: { id: data.unitId },
+        data: { status: "OCCUPIED" },
+      });
+
+      return { success: true, bookingId: booking.id };
   });
 
   revalidatePath("/admin/front-desk");
-  return { success: true, bookingId: booking.id };
 }
 
 export async function addCharge(
@@ -617,11 +614,7 @@ export async function extendStay(bookingId: string, newCheckOutDate: Date) {
     data: {
       bookingId,
       type: addedNights > 0 ? 'CHARGE' : 'CREDIT',
-      amount: totalAdded, // This matches the type. If negative, it might be confusing if type is CHARGE. 
-                          // Actually, if addedNights < 0, totalAdded is negative. 
-                          // If type is CREDIT, amount should usually be positive representing the credit value? 
-                          // Or we keep type CHARGE and amount negative?
-                          // Standardize: If negative, it effectively reduces the balance. 
+      amount: Math.abs(totalAdded), // Store absolute value. Type 'CREDIT' implies distinct financial direction. 
                           // Let's keep existing pattern: CHARGE with negative amount works for decrementing totals. 
                           // But for clarity, if it's a refund/shortening, we might want 'CREDIT'. 
                           // However, the `totalAmount` logic below uses `increment: totalAdded`. 
@@ -656,24 +649,55 @@ export async function voidCharge(bookingId: string, adjustmentId: string) {
 
   if (adjustment.isVoided) return { success: false, message: "Already voided" };
 
-  // Mark as Voided
-  await db.bookingAdjustment.update({
-     where: { id: adjustmentId },
-     data: {
-        isVoided: true,
-        voidedAt: new Date(),
-        updatedById: session.user.id
-     }
-  });
+  // Use transaction
+  await db.$transaction(async (tx) => {
+      // 1. Mark as Voided
+      await tx.bookingAdjustment.update({
+         where: { id: adjustmentId },
+         data: {
+            isVoided: true,
+            voidedAt: new Date(),
+            updatedById: session.user.id
+         }
+      });
 
-  // Update Booking Totals
-  await db.booking.update({
-     where: { id: bookingId },
-     data: {
-        totalAmount: { decrement: adjustment.amount },
-        amountDue: { decrement: adjustment.amount },
-        updatedById: session.user.id
-     }
+      // 2. Recalculate Booking Logic
+      const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new Error("Booking not found");
+
+      // We void a CHARGE (+Total), so we decrement total & due.
+      // But we should verify adjustment type? Assuming it's a charge (amount > 0).
+      // If it was a CREDIT (reduction), voiding it INCREASES total/due.
+      // Let's check adjustment.type or handle generically?
+      // For now `decrement` is used assuming it WAS an addition.
+      
+      let newTotal = Number(booking.totalAmount);
+      let newDue = Number(booking.amountDue);
+
+      if (adjustment.type === 'CHARGE') {
+         newTotal -= Number(adjustment.amount);
+         newDue -= Number(adjustment.amount);
+      } else if (adjustment.type === 'CREDIT') {
+          // If we void a credit (which reduced total), we add it back?
+          newTotal += Number(adjustment.amount);
+          newDue += Number(adjustment.amount);
+      }
+      // If 'NOTE' type, no financial impact. But amount is 0 usually.
+      
+      const newPaid = Number(booking.amountPaid); 
+      let newStatus: PaymentStatus = 'UNPAID';
+      if (newPaid >= newTotal && newTotal > 0) newStatus = 'PAID';
+      else if (newPaid > 0) newStatus = 'PARTIALLY_PAID';
+
+      await tx.booking.update({
+         where: { id: bookingId },
+         data: {
+            totalAmount: newTotal,
+            amountDue: newDue,
+            paymentStatus: newStatus,
+            updatedById: session.user.id
+         }
+      });
   });
 
   revalidatePath("/admin/front-desk");
@@ -689,26 +713,40 @@ export async function voidPayment(bookingId: string, paymentId: string) {
 
   if (payment.status === 'VOIDED') return { success: false, message: "Already voided" };
 
-  // Update Payment Status
-  await db.payment.update({
-     where: { id: paymentId },
-     data: { 
-        status: 'VOIDED',
-        updatedById: session.user.id,
-        metadata: { ...(payment.metadata as object || {}), voidedAt: new Date(), voidedBy: session.user.id }
-     }
-  });
+  // Use transaction to ensure consistency
+  await db.$transaction(async (tx) => {
+      // 1. Update Payment Status
+      await tx.payment.update({
+         where: { id: paymentId },
+         data: { 
+            status: 'VOIDED',
+            updatedById: session.user.id,
+            metadata: { ...(payment.metadata as object || {}), voidedAt: new Date(), voidedBy: session.user.id }
+         }
+      });
 
-  // Update Booking Totals (Add back the amount to due, remove from paid)
-  // Re-fetch booking to recalculate strictly? Or just decrement/increment.
-  await db.booking.update({
-     where: { id: bookingId },
-     data: {
-        amountPaid: { decrement: payment.amount },
-        amountDue: { increment: payment.amount },
-        paymentStatus: 'PARTIALLY_PAID', // Revert to unpaid/partial
-        updatedById: session.user.id
-     }
+      // 2. Fetch latest booking state to recalculate
+      const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new Error("Booking not found");
+
+      const newPaid = Number(booking.amountPaid) - Number(payment.amount);
+      const newDue = Number(booking.amountDue) + Number(payment.amount);
+      const total = Number(booking.totalAmount);
+
+      let newStatus: PaymentStatus = 'UNPAID';
+      if (newPaid >= total && total > 0) newStatus = 'PAID';
+      else if (newPaid > 0) newStatus = 'PARTIALLY_PAID';
+      
+      // Update Booking Totals
+      await tx.booking.update({
+         where: { id: bookingId },
+         data: {
+            amountPaid: newPaid,
+            amountDue: newDue,
+            paymentStatus: newStatus,
+            updatedById: session.user.id
+         }
+      });
   });
 
   revalidatePath("/admin/front-desk");
@@ -731,7 +769,7 @@ export async function verifySupervisorCredentials(data: { identifier: string; pa
   }
 
   // Check role: ADMIN or MANAGER
-  if (supervisor.role !== 'ADMIN') {
+  if (!['ADMIN', 'MANAGER'].includes(supervisor.role)) {
      return { success: false, message: "User does not have supervisor privileges" };
   }
 

@@ -367,50 +367,83 @@ export function UnitActionDialog({
   };
 
   const handlePrintInvoice = () => {
-    // Basic window print for now
-    // In a real app, this would route to a dedicated /invoice/[id] page or generate a PDF
+    // Escape HTML to prevent XSS
+    const escapeHtml = (unsafe: string | number | null | undefined) => {
+      if (unsafe === null || unsafe === undefined) return "";
+      return String(unsafe)
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+    };
+
+    const formatCurrency = (amount: number | string) => {
+       return Number(amount).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' });
+    };
+
     const printWindow = window.open('', '_blank');
     if (printWindow) {
+      const { shortRef, guestFirstName, guestLastName, totalAmount, amountPaid, amountDue, items, adjustments } = activeBooking;
+
+      const itemsHtml = items.map((i: any) => 
+        `<tr>
+           <td>Room Charge - ${escapeHtml(i.room.name)} (${escapeHtml(i.guests)} pax)</td>
+           <td>${escapeHtml(formatCurrency(i.pricePerNight))}</td>
+         </tr>`
+      ).join('');
+
+      const adjustmentsHtml = adjustments.map((a: any) => {
+         const description = escapeHtml(a.description);
+         const amount = escapeHtml(formatCurrency(a.amount));
+         const voidIndicator = a.isVoided ? ` <span style="font-size: 0.8em; color: #ff0000;">(VOID)</span>` : "";
+         
+         const descStyle = a.isVoided ? "text-decoration: line-through; color: #999;" : "";
+         const amtStyle = a.isVoided ? "text-decoration: line-through; color: #999;" : "";
+
+         return `<tr>
+           <td style="${descStyle}">${description}${voidIndicator}</td>
+           <td style="${amtStyle}">${amount}</td>
+         </tr>`;
+      }).join('');
+
       printWindow.document.write(`
         <html>
           <head>
-            <title>Invoice - ${activeBooking.shortRef}</title>
+            <title>Invoice - ${escapeHtml(shortRef)}</title>
             <style>
-              body { font-family: sans-serif; padding: 20px; }
+              body { font-family: sans-serif; padding: 20px; color: #000; }
               .header { text-align: center; margin-bottom: 30px; }
               table { width: 100%; border-collapse: collapse; margin-top: 20px; }
               th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
               th { background-color: #f2f2f2; }
               .total { margin-top: 20px; text-align: right; font-weight: bold; }
+              .status-void { color: red; font-weight: bold; }
             </style>
           </head>
           <body>
             <div class="header">
               <h1>Invoice</h1>
-              <p>Booking Ref: ${activeBooking.shortRef}</p>
-              <p>Guest: ${activeBooking.guestFirstName} ${activeBooking.guestLastName}</p>
+              <p>Booking Ref: ${escapeHtml(shortRef)}</p>
+              <p>Guest: ${escapeHtml(guestFirstName)} ${escapeHtml(guestLastName)}</p>
             </div>
             <table>
               <thead><tr><th>Description</th><th>Amount</th></tr></thead>
               <tbody>
-                ${activeBooking.items.map((i: any) => `<tr><td>Room Charge - ${i.room.name} (${i.guests} pax)</td><td>₱${Number(i.pricePerNight).toLocaleString()}</td></tr>`).join('')}
-                ${activeBooking.adjustments.map((a: any) => `
-                   <tr>
-                     <td>${a.isVoided ? `<span style="text-decoration: line-through">${a.description}</span> (VOID)` : a.description}</td>
-                     <td>${a.isVoided ? `<span style="text-decoration: line-through">₱${Number(a.amount).toLocaleString()}</span>` : `₱${Number(a.amount).toLocaleString()}`}</td>
-                   </tr>
-                `).join('')}
+                ${itemsHtml}
+                ${adjustmentsHtml}
               </tbody>
             </table>
             <div class="total">
-              <p>Total: ₱${activeBooking.totalAmount}</p>
-              <p>Paid: ₱${activeBooking.amountPaid}</p>
-              <p>Balance Due: ₱${activeBooking.amountDue}</p>
+              <p>Total: ${escapeHtml(formatCurrency(totalAmount))}</p>
+              <p>Paid: ${escapeHtml(formatCurrency(amountPaid))}</p>
+              <p>Balance Due: ${escapeHtml(formatCurrency(amountDue))}</p>
             </div>
           </body>
         </html>
       `);
       printWindow.document.close();
+      printWindow.focus();
       printWindow.print();
     }
   };
