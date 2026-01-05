@@ -233,8 +233,7 @@ export async function createWalkIn(data: {
   const firstName = data.guestName.split(" ")[0];
   const lastName = data.guestName.split(" ").slice(1).join(" ") || "Guest";
 
-  /* Refactoring to use transaction */
-  return await db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
       // 1. Create/Update User
       let userId = null;
       if (data.guestEmail) {
@@ -246,12 +245,12 @@ export async function createWalkIn(data: {
           userId = existingUser.id;
           // Update extended profile if provided
           await tx.user.update({
-            where: { id: existingUser.id },
-            data: {
-              phone: data.guestPhone || existingUser.phone,
-              address: data.guestAddress || existingUser.address,
-              idScans: data.idScans && data.idScans.length > 0 ? data.idScans : existingUser.idScans
-            }
+             where: { id: existingUser.id },
+             data: {
+               phone: data.guestPhone || existingUser.phone,
+               address: data.guestAddress || existingUser.address,
+               idScans: data.idScans && data.idScans.length > 0 ? data.idScans : existingUser.idScans
+             }
           });
         } else {
            const newUser = await tx.user.create({
@@ -364,6 +363,7 @@ export async function createWalkIn(data: {
   });
 
   revalidatePath("/admin/front-desk");
+  return result;
 }
 
 export async function addCharge(
@@ -374,31 +374,34 @@ export async function addCharge(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  // Create Adjustment
-  await db.bookingAdjustment.create({
-    data: {
-      bookingId,
-      type: "CHARGE",
-      amount,
-      description,
-    },
-  });
-
-  // Update Booking Totals
-  const booking = await db.booking.findUnique({ where: { id: bookingId } });
-  if (booking) {
-    const newTotal = Number(booking.totalAmount) + Number(amount);
-    const newDue = Number(booking.amountDue) + Number(amount);
-
-    await db.booking.update({
-      where: { id: bookingId },
+  await db.$transaction(async (tx) => {
+    // Create Adjustment
+    await tx.bookingAdjustment.create({
       data: {
-        totalAmount: newTotal,
-        amountDue: newDue,
-        updatedById: session.user.id,
+        bookingId,
+        type: "CHARGE",
+        amount,
+        description,
+        createdById: session.user.id,
       },
     });
-  }
+
+    // Update Booking Totals
+    const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+    if (booking) {
+      const newTotal = Number(booking.totalAmount) + Number(amount);
+      const newDue = Number(booking.amountDue) + Number(amount);
+
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          totalAmount: newTotal,
+          amountDue: newDue,
+          updatedById: session.user.id,
+        },
+      });
+    }
+  });
 
   revalidatePath("/admin/front-desk");
   return { success: true };
