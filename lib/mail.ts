@@ -132,6 +132,18 @@ const getBaseUrl = () => {
     guestName: string;
     lookupToken?: string; // Secure token for direct booking access
   }
+
+  interface BookingCancellationParams {
+    email: string;
+    ref: string;
+    propertyName: string;
+    checkIn: string;
+    checkOut: string;
+    refundAmount: string;
+    cancellationFee: string;
+    guestName: string;
+    isFreeCancellation: boolean;
+  }
   
   export const sendBookingConfirmationEmail = async (params: BookingConfirmationParams) => {
     const baseUrl = getBaseUrl();
@@ -170,5 +182,45 @@ const getBaseUrl = () => {
     } catch (error) {
       console.error("Failed to send booking confirmation email:", error);
       // Don't throw to avoid crashing webhook
+    }
+  };
+
+  export const sendBookingCancellationEmail = async (params: BookingCancellationParams) => {
+    const baseUrl = getBaseUrl();
+    const { email, ...rest } = params;
+  
+    try {
+      const response = await fetch(`${baseUrl}/api/email`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.RESEND_API_KEY || "" 
+        },
+        body: JSON.stringify({ 
+          type: "booking-cancellation", 
+          email, 
+          ...rest 
+        }),
+        cache: "no-store",
+      });
+  
+      const contentType = response.headers.get("content-type");
+      if (!contentType?.includes("application/json")) {
+        console.error("Email API returned non-JSON response");
+        return;
+      }
+  
+      const result = await response.json();
+  
+      if (!response.ok) {
+        console.error("Booking cancellation email error:", result.error);
+        throw new Error(result.error || "Failed to send cancellation email");
+      }
+  
+      console.log("Booking cancellation email sent:", result.data);
+      return result;
+    } catch (error) {
+      console.error("Failed to send booking cancellation email:", error);
+      // Don't throw to avoid crashing the cancellation flow
     }
   };

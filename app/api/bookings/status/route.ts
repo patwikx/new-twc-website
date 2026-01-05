@@ -2,9 +2,47 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCheckoutSession } from "@/lib/paymongo";
 import { sendBookingConfirmationEmail } from "@/lib/mail";
+import { checkLimit } from "@/lib/rate-limit";
+
+/**
+ * Extract client IP from request headers
+ * Checks x-forwarded-for and x-real-ip headers
+ */
+function getClientIP(request: Request): string {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    // x-forwarded-for can contain multiple IPs, take the first one
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  const realIP = request.headers.get('x-real-ip');
+  if (realIP) {
+    return realIP.trim();
+  }
+  
+  return 'unknown';
+}
 
 export async function GET(request: Request) {
   try {
+    // Rate limiting check - 10 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 10,
+      windowMs: 60 * 1000,
+      keyPrefix: 'booking-status'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+    
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

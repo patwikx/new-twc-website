@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { checkLimit } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -14,8 +15,45 @@ const ContactSchema = z.object({
   turnstileToken: z.string().min(1, "Security verification required"),
 });
 
+/**
+ * Extract client IP from request headers
+ * Checks x-forwarded-for and x-real-ip headers
+ */
+function getClientIP(request: Request): string {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    // x-forwarded-for can contain multiple IPs, take the first one
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  const realIP = request.headers.get('x-real-ip');
+  if (realIP) {
+    return realIP.trim();
+  }
+  
+  return 'unknown';
+}
+
 export async function POST(request: Request) {
   try {
+    // Rate limiting check - 5 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 5,
+      windowMs: 60 * 1000,
+      keyPrefix: 'contact-form'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+    
     if (!process.env.RESEND_API_KEY) {
         console.error("CRITICAL: RESEND_API_KEY is not set!");
         return NextResponse.json({ error: "Server configuration error: Email service not configured." }, { status: 500 });
