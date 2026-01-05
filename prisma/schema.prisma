@@ -18,13 +18,16 @@ model User {
     emailVerified DateTime?
     image         String?
     password      String?
-    role          UserRole  @default(GUEST)
+
+    role       UserRole @default(GUEST)
+    employeeId String?  @unique
 
     // Extended Profile
     phone       String?
     dateOfBirth DateTime?
     nationality String?
     address     String?   @db.Text
+    idScans     String[]
 
     accounts  Account[]
     sessions  Session[]
@@ -504,6 +507,7 @@ model Payment {
     paymentMethodId String?
     sourceId        String?
     externalId      String? @unique
+    reference       String? // User provided reference/remarks
 
     metadata Json?
 
@@ -552,8 +556,10 @@ model BookingAdjustment {
     booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
     type        String // CHARGE, DISCOUNT
-    amount      Decimal @db.Decimal(10, 2)
+    amount      Decimal   @db.Decimal(10, 2)
     description String
+    isVoided    Boolean   @default(false)
+    voidedAt    DateTime?
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

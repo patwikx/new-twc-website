@@ -1,13 +1,15 @@
-import { hasPermission } from "@/lib/auth-checks";
+import { hasPermission, getCurrentRole } from "@/lib/auth-checks";
 import { redirect } from "next/navigation";
 import { getFrontDeskData } from "@/actions/admin/front-desk";
 import { RoomGrid } from "@/components/admin/front-desk/room-grid";
 import { getCurrentPropertyFilter } from "@/lib/data-access";
+import { db } from "@/lib/db";
 
 export default async function FrontDeskPage() {
   // Check permission (Staff or Admin)
   const canView = await hasPermission("bookings:edit"); 
   if (!canView) redirect("/admin");
+  const userRole = await getCurrentRole();
 
   // Get scope (Front Desk usually operates on a single property view)
   const propertyWhere = await getCurrentPropertyFilter();
@@ -67,6 +69,13 @@ export default async function FrontDeskPage() {
       }
   }));
 
+   // Fetch Staff
+   const staffMembers = await db.user.findMany({
+      where: { role: 'STAFF' },
+      select: { id: true, name: true, employeeId: true },
+      orderBy: { name: 'asc' }
+   });
+
   return (
     <div className="space-y-6 pb-20">
        <div className="flex flex-col gap-2">
@@ -79,6 +88,8 @@ export default async function FrontDeskPage() {
        <RoomGrid 
           rooms={rooms}
           unassignedBookings={unassignedBookings}
+          currentUserRole={userRole}
+          staffMembers={staffMembers}
        />
     </div>
   );
