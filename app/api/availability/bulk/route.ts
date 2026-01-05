@@ -74,24 +74,7 @@ export async function POST(request: Request) {
     }
 
     // Check availability for all room types
-    const resultsMap = await checkUnitAvailability(parsedChecks);
-
-    // Convert map to array, ensuring all requested room types are included
-    const results: UnitAvailabilityResult[] = parsedChecks.map(check => {
-      const availability = resultsMap.get(check.roomTypeId);
-      if (availability) {
-        return availability;
-      }
-      // Room type not found or has no units
-      return {
-        roomTypeId: check.roomTypeId,
-        totalUnits: 0,
-        bookedUnits: 0,
-        availableUnits: 0,
-        available: false,
-        limitedAvailability: false
-      };
-    });
+    const results = await checkUnitAvailability(parsedChecks);
 
     return NextResponse.json(results);
   } catch (error) {

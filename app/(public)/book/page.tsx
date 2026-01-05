@@ -634,11 +634,11 @@ function BookingForm() {
                                                    selected={new Date(item.checkIn)}
                                                    onSelect={(date) => {
                                                       if (!date) return;
-                                                      const newDate = date;
+                                                      const newDate = new Date(date);
                                                       newDate.setHours(0,0,0,0);
                                                       
                                                       const currentCheckOut = new Date(item.checkOut);
-                                                      let newCheckOut = currentCheckOut;
+                                                      let newCheckOut = new Date(currentCheckOut);
                                                       if (newDate >= currentCheckOut) {
                                                          newCheckOut = addDays(newDate, 1);
                                                       }

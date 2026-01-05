@@ -69,6 +69,7 @@ export const apiAuthPrefix = "/api/auth";
  */
 export const publicApiRoutes = [
   "/api/email",
+  "api/chat",
   "/api/contact",
   "/api/newsletter",
   "/api/bookings/status",

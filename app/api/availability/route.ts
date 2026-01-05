@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       { roomTypeId, checkIn, checkOut }
     ]);
 
-    const availability = results.get(roomTypeId);
+    const availability = results[0];
 
     if (!availability) {
       // Room type not found or has no units

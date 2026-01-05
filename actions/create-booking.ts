@@ -136,10 +136,10 @@ export async function createBooking(
       
       // Check if any rooms are unavailable
       const unavailableRooms: string[] = [];
-      for (const [roomId, availability] of availabilityResults) {
+      for (const availability of availabilityResults) {
         if (!availability.available) {
-          const room = roomMap.get(roomId);
-          unavailableRooms.push(room?.name || roomId);
+          const room = roomMap.get(availability.roomTypeId);
+          unavailableRooms.push(room?.name || availability.roomTypeId);
         }
       }
       
@@ -180,7 +180,7 @@ export async function createBooking(
       });
 
       return booking;
-    });
+    }, { isolationLevel: 'Serializable' });
 
     // Generate verification token for guest checkout (outside transaction)
     const { token: verificationToken, expiresAt: tokenExpiresAt } = 

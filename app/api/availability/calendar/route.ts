@@ -51,9 +51,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // Calculate start and end dates for the month
-    const startDate = new Date(year, monthNum - 1, 1);
-    const endDate = new Date(year, monthNum, 1); // First day of next month
+    // Calculate start and end dates for the month (UTC)
+    const startDate = new Date(Date.UTC(year, monthNum - 1, 1));
+    const endDate = new Date(Date.UTC(year, monthNum, 1)); // First day of next month
 
     // Get daily availability for the month
     const availability = await getDateRangeAvailability(

@@ -52,15 +52,20 @@ export function useRoomAvailability(
   const [error, setError] = useState<string | null>(null);
   const [fetchTrigger, setFetchTrigger] = useState(0);
 
-  // Calculate which months to fetch based on visible month and number of months
+  // Normalize visibleMonth to the start of the month to avoid instability from inline "new Date()" calls
+  const normalizedMonth = useMemo(() => {
+    return new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  }, [visibleMonth.getFullYear(), visibleMonth.getMonth()]);
+
+  // Calculate which months to fetch based on normalized visible month
   const monthsToFetch = useMemo(() => {
     const months: string[] = [];
     for (let i = 0; i < numberOfMonths; i++) {
-      const month = addMonths(visibleMonth, i);
+      const month = addMonths(normalizedMonth, i);
       months.push(format(month, "yyyy-MM"));
     }
     return months;
-  }, [visibleMonth, numberOfMonths]);
+  }, [normalizedMonth, numberOfMonths]);
 
   const fetchAvailability = useCallback(async () => {
     if (!roomTypeId) {

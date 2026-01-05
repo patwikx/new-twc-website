@@ -161,8 +161,8 @@ export function datesOverlap(
  */
 export async function checkUnitAvailability(
   checks: UnitAvailabilityCheck[]
-): Promise<Map<string, UnitAvailabilityResult>> {
-  const results = new Map<string, UnitAvailabilityResult>();
+): Promise<UnitAvailabilityResult[]> {
+  const results: UnitAvailabilityResult[] = [];
   
   if (checks.length === 0) {
     return results;
@@ -224,7 +224,7 @@ export async function checkUnitAvailability(
     const available = availableUnits > 0;
     const limitedAvailability = availableUnits > 0 && availableUnits <= 2;
 
-    results.set(check.roomTypeId, {
+    results.push({
       roomTypeId: check.roomTypeId,
       totalUnits,
       bookedUnits,
@@ -308,17 +308,17 @@ export async function getDateRangeAvailability(
 
   // Iterate through each day in the range
   const currentDate = new Date(startDate);
-  currentDate.setHours(0, 0, 0, 0);
+  currentDate.setUTCHours(0, 0, 0, 0);
   
   const endDateTime = new Date(endDate);
-  endDateTime.setHours(0, 0, 0, 0);
+  endDateTime.setUTCHours(0, 0, 0, 0);
 
   while (currentDate < endDateTime) {
     // Count bookings that overlap with this specific day
     // A booking overlaps with a day if: checkIn <= day AND checkOut > day
     const dayStart = new Date(currentDate);
     const dayEnd = new Date(currentDate);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
     const bookedUnits = overlappingBookings.filter(booking => {
       return booking.checkIn < dayEnd && booking.checkOut > dayStart;
@@ -335,7 +335,7 @@ export async function getDateRangeAvailability(
     });
 
     // Move to next day
-    currentDate.setDate(currentDate.getDate() + 1);
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
   }
 
   return results;
@@ -510,8 +510,8 @@ export interface TransactionalAvailabilityResult {
 export async function checkUnitAvailabilityInTransaction(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   checks: TransactionalAvailabilityCheck[]
-): Promise<Map<string, TransactionalAvailabilityResult>> {
-  const results = new Map<string, TransactionalAvailabilityResult>();
+): Promise<TransactionalAvailabilityResult[]> {
+  const results: TransactionalAvailabilityResult[] = [];
   
   if (checks.length === 0) {
     return results;
@@ -573,7 +573,7 @@ export async function checkUnitAvailabilityInTransaction(
     const availableUnits = Math.max(0, totalUnits - bookedUnits);
     const available = availableUnits > 0;
 
-    results.set(check.roomTypeId, {
+    results.push({
       roomTypeId: check.roomTypeId,
       available,
       availableUnits,
