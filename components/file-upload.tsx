@@ -187,7 +187,7 @@ export function FileUpload({
       {/* Upload Area */}
       <div
         className={cn(
-          "relative border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 cursor-pointer",
+          "relative border-2 border-dashed rounded-lg px-2 py-4 text-center transition-all duration-300 cursor-pointer h-full flex flex-col items-center justify-center",
           isDragOver && !disabled
             ? "border-primary bg-secondary/50"
             : "border-border hover:border-primary/50",
@@ -208,64 +208,35 @@ export function FileUpload({
           disabled={disabled}
         />
 
-        <div className="flex flex-col items-center gap-4">
-          <CloudUpload className="h-8 w-8 text-muted-foreground" />
-          <div className="space-y-2">
-            <p className="text-sm font-medium">
-              {multiple 
-                ? `Drop up to ${maxFiles} files here or click to browse`
-                : 'Drop files here or click to browse'
-              }
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Maximum file size: {maxSize}MB
-              {multiple && ` • Up to ${maxFiles} files`}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Uploading Files Progress */}
-      {isUploading && (
-        <div className="mt-6 space-y-4">
-          <p className="text-sm font-medium">
-            Uploading {uploadingFiles.length} file(s)...
-          </p>
-          <div className="space-y-3">
-            {uploadingFiles.map((uploadingFile) => (
-              <Card key={uploadingFile.id} className="p-4">
-                <CardContent className="p-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate mb-2">
-                          {uploadingFile.file.name}
-                        </p>
-                        <Progress 
-                          value={uploadingFile.progress} 
-                          className="h-2 mb-1"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          {uploadingFile.progress}%
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => cancelUpload(uploadingFile.id)}
-                      className="flex-shrink-0 h-8 w-8 p-0 hover:text-destructive"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+        {isUploading ? (
+           <div className="w-full h-full overflow-y-auto px-2 space-y-2 flex flex-col justify-center">
+             {uploadingFiles.map((uploadingFile) => (
+               <div key={uploadingFile.id} className="flex items-center gap-2 w-full">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] truncate mb-1 text-left">{uploadingFile.file.name}</p>
+                    <Progress value={uploadingFile.progress} className="h-1" />
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+               </div>
+             ))}
+           </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1.5">
+            <CloudUpload className="h-6 w-6 text-muted-foreground" />
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium px-2">
+                {multiple 
+                  ? `Upload up to ${maxFiles} files`
+                  : 'Upload File'
+                }
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Max: {maxSize}MB
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -276,6 +247,7 @@ interface UploadedFileDisplayProps {
   fileUrl: string | null;
   onRemove: () => void;
   disabled?: boolean;
+  variant?: 'default' | 'banner';
 }
 
 export function UploadedFileDisplay({
@@ -283,44 +255,90 @@ export function UploadedFileDisplay({
   fileUrl,
   onRemove,
   disabled = false,
+  variant = 'default',
 }: UploadedFileDisplayProps) {
-  const fileExtension = name.split('.').pop()?.toLowerCase() || '';
-  const isImage = ['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension);
+  // Determine potential file type
+  const fileExtension = (name.split('.').pop()?.toLowerCase() || '') || (fileUrl?.split('.').pop()?.toLowerCase() || '');
   const isVideo = ['mp4', 'webm', 'mov'].includes(fileExtension);
+  // Initial guess for image
+  const initialIsImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension) || fileUrl?.startsWith('data:image') || fileUrl?.startsWith('blob:');
+  
+  const [imageError, setImageError] = React.useState(false);
+
+  const shouldShowImage = (initialIsImage || !fileExtension) && fileUrl && !imageError && !isVideo;
+
+  if (variant === 'banner' && shouldShowImage) {
+      return (
+        <Card className="relative w-full h-full overflow-hidden border border-white/10 bg-neutral-900 group">
+           {/* Background Image */}
+           <div className="absolute inset-0">
+              <img 
+                src={fileUrl!} 
+                alt={name} 
+                className="w-full h-full object-cover opacity-60 transition-opacity group-hover:opacity-40"
+                onError={() => setImageError(true)}
+              />
+              <div className="absolute inset-0 bg-black/40" />
+           </div>
+
+           {/* Centered Action */}
+           <div className="absolute inset-0 flex items-center justify-center">
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                onClick={onRemove}
+                disabled={disabled}
+                className="shadow-lg bg-white text-black hover:bg-neutral-200"
+              >
+                 <CloudUpload className="mr-2 h-4 w-4" />
+                 Change Image
+              </Button>
+           </div>
+           
+           {/* FileName (Optional, visible on hover or always?) */}
+           <div className="absolute bottom-2 left-2 right-2">
+              <p className="text-[10px] text-white/50 truncate text-center">{name}</p>
+           </div>
+        </Card>
+      );
+  }
 
   const renderPreview = () => {
-    if (isImage && fileUrl) {
+    if (shouldShowImage) {
       return (
-        <div className="relative w-16 h-16 flex-shrink-0">
+        <div className="relative w-16 h-16 flex-shrink-0 bg-neutral-900 rounded-md overflow-hidden border border-white/10">
           <img 
-            src={fileUrl} 
+            src={fileUrl!} 
             alt={name} 
-            className="w-full h-full object-cover rounded"
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
           />
         </div>
       );
     }
+    
     if (isVideo && fileUrl) {
       return (
-        <div className="relative w-16 h-16 flex-shrink-0 flex items-center justify-center border rounded bg-secondary">
-          <Video className="h-8 w-8 text-primary" />
+        <div className="relative w-16 h-16 flex-shrink-0 flex items-center justify-center border border-white/10 rounded bg-neutral-900">
+          <Video className="h-8 w-8 text-neutral-400" />
         </div>
       );
     }
+
     return (
-      <div className="flex items-center justify-center w-16 h-16 flex-shrink-0 border rounded bg-secondary">
-        <FileText className="h-6 w-6 text-primary" />
+      <div className="flex items-center justify-center w-16 h-16 flex-shrink-0 border border-white/10 rounded bg-neutral-900">
+        <FileText className="h-6 w-6 text-neutral-400" />
       </div>
     );
   };
 
   return (
-    <Card className="border-green-500 bg-green-50 dark:bg-green-950/50">
-      <CardContent className="p-4">
+    <Card className="border border-white/10 bg-neutral-900 overflow-hidden w-full">
+      <CardContent className="p-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {renderPreview()}
-            <p className="text-sm font-medium truncate">
+            <p className="text-xs font-medium truncate text-neutral-300">
               {name}
             </p>
           </div>
@@ -329,9 +347,9 @@ export function UploadedFileDisplay({
             size="sm"
             onClick={onRemove}
             disabled={disabled}
-            className="flex-shrink-0 h-8 w-8 p-0 hover:text-destructive"
+            className="flex-shrink-0 h-6 w-6 p-0 hover:text-red-400 hover:bg-neutral-800 rounded-full"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3 w-3" />
           </Button>
         </div>
       </CardContent>

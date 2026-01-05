@@ -7,9 +7,11 @@ import { UnitActionDialog } from "./unit-action-dialog";
 interface RoomGridProps {
   rooms: any[];
   unassignedBookings: any[];
+  currentUserRole: string | undefined | null;
+  staffMembers: any[];
 }
 
-export function RoomGrid({ rooms, unassignedBookings }: RoomGridProps) {
+export function RoomGrid({ rooms, unassignedBookings, currentUserRole, staffMembers }: RoomGridProps) {
   const [selectedUnit, setSelectedUnit] = React.useState<any>(null);
 
   const getPrice = (roomTypeId: string) => {
@@ -66,7 +68,9 @@ export function RoomGrid({ rooms, unassignedBookings }: RoomGridProps) {
          unassignedBookings={unassignedBookings}
          roomPrice={selectedUnit ? getPrice(selectedUnit.roomTypeId) : 0}
          propertyRates={selectedUnit ? getPropertyRates(selectedUnit.roomTypeId) : { taxRate: 0, serviceChargeRate: 0 }}
-         allRooms={rooms} // Pass all rooms for transfer feature
+         allRooms={rooms} 
+         currentUserRole={currentUserRole}
+         staffMembers={staffMembers}
       />
     </div>
   );
