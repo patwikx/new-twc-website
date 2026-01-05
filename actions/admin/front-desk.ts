@@ -571,72 +571,70 @@ export async function extendStay(bookingId: string, newCheckOutDate: Date) {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  const booking = await db.booking.findUnique({
-    where: { id: bookingId },
-    include: { items: { include: { room: true } } }
-  });
+  await db.$transaction(async (tx) => {
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      include: { items: { include: { room: true } } }
+    });
 
-  if (!booking || booking.items.length === 0) throw new Error("Booking not found");
-  const item = booking.items[0]; // Assuming single room booking for now
+    if (!booking || booking.items.length === 0) throw new Error("Booking not found");
+    const item = booking.items[0]; // Assuming single room booking for now
 
-  // Calculate added nights
-  const oldCheckOut = new Date(item.checkOut);
-  const checkIn = new Date(item.checkIn);
-  
-  if (newCheckOutDate <= checkIn) {
-      throw new Error("New checkout date must be after check-in date");
-  }
-
-  const diffTime = newCheckOutDate.getTime() - oldCheckOut.getTime();
-  const addedNights = Math.round(diffTime / (1000 * 60 * 60 * 24)); // Round to nearest integer to handle DST/time variance appropriately
-
-  if (addedNights === 0) return { success: true }; // No change
-
-  // Calculate costs
-  // Need to fetch property rates again or infer
-  // For simplicity, we use the item's stored pricePerNight
-  const roomCost = Number(item.pricePerNight) * addedNights;
-  
-  // Fetch property for tax info
-  const property = await db.property.findUnique({ where: { id: booking.propertyId! } });
-  const taxRate = property?.taxRate ? Number(property.taxRate) : 0;
-  const serviceRate = property?.serviceChargeRate ? Number(property.serviceChargeRate) : 0;
-
-  const taxAmount = roomCost * taxRate;
-  const serviceCharge = roomCost * serviceRate;
-  const totalAdded = roomCost + taxAmount + serviceCharge;
-
-  // 1. Update Booking Item Dates
-  await db.bookingItem.update({
-    where: { id: item.id },
-    data: { checkOut: newCheckOutDate }
-  });
-
-  // 2. Add Adjustment for the Extension/Shortening
-  await db.bookingAdjustment.create({
-    data: {
-      bookingId,
-      type: addedNights > 0 ? 'CHARGE' : 'CREDIT',
-      amount: Math.abs(totalAdded), // Store absolute value. Type 'CREDIT' implies distinct financial direction. 
-                          // Let's keep existing pattern: CHARGE with negative amount works for decrementing totals. 
-                          // But for clarity, if it's a refund/shortening, we might want 'CREDIT'. 
-                          // However, the `totalAmount` logic below uses `increment: totalAdded`. 
-                          // If totalAdded is negative, it decrements.
-      description: `Stay Modification (${addedNights > 0 ? '+' : ''}${addedNights} nights)`,
-      createdById: session.user.id
+    // Calculate added nights
+    const oldCheckOut = new Date(item.checkOut);
+    const checkIn = new Date(item.checkIn);
+    
+    if (newCheckOutDate <= checkIn) {
+        throw new Error("New checkout date must be after check-in date");
     }
-  });
 
-  // 3. Update Booking Totals
-  await db.booking.update({
-     where: { id: bookingId },
-     data: {
-        totalAmount: { increment: totalAdded },
-        amountDue: { increment: totalAdded },
-        taxAmount: { increment: taxAmount },
-        serviceCharge: { increment: serviceCharge },
-        updatedById: session.user.id
-     }
+    const diffTime = newCheckOutDate.getTime() - oldCheckOut.getTime();
+    const addedNights = Math.round(diffTime / (1000 * 60 * 60 * 24)); // Round to nearest integer
+
+    if (addedNights === 0) return; // No change
+
+    // Calculate costs
+    const roomCost = Number(item.pricePerNight) * addedNights;
+    
+    // Fetch property for tax info - assuming property fetch is fast, can be outside or inside. 
+    // Property data rarely changes, but for consistency let's fetch inside or before. 
+    // Since we need booking.propertyId, we fetch inside.
+    const property = await tx.property.findUnique({ where: { id: booking.propertyId! } });
+    const taxRate = property?.taxRate ? Number(property.taxRate) : 0;
+    const serviceRate = property?.serviceChargeRate ? Number(property.serviceChargeRate) : 0;
+
+    const taxAmount = roomCost * taxRate;
+    const serviceCharge = roomCost * serviceRate;
+    const totalAdded = roomCost + taxAmount + serviceCharge;
+
+    // 1. Update Booking Item Dates
+    await tx.bookingItem.update({
+      where: { id: item.id },
+      data: { checkOut: newCheckOutDate }
+    });
+
+    // 2. Add Adjustment
+    await tx.bookingAdjustment.create({
+      data: {
+        bookingId,
+        type: addedNights > 0 ? 'CHARGE' : 'CREDIT',
+        amount: Math.abs(totalAdded), 
+        description: `Stay Modification (${addedNights > 0 ? '+' : ''}${addedNights} nights)`,
+        createdById: session.user.id
+      }
+    });
+
+    // 3. Update Booking Totals
+    await tx.booking.update({
+       where: { id: bookingId },
+       data: {
+          totalAmount: { increment: totalAdded },
+          amountDue: { increment: totalAdded },
+          taxAmount: { increment: taxAmount },
+          serviceCharge: { increment: serviceCharge },
+          updatedById: session.user.id
+       }
+    });
   });
 
   revalidatePath("/admin/front-desk");
