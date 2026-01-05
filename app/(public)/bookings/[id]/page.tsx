@@ -105,7 +105,20 @@ export default async function BookingDetailsPage({ params }: { params: Promise<{
               <div className="flex gap-3">
                  {booking.status === 'CONFIRMED' && (
                     <DownloadReceiptButton 
-                       booking={booking}
+                       booking={{
+                          shortRef: booking.shortRef,
+                          guestFirstName: booking.guestFirstName,
+                          guestLastName: booking.guestLastName,
+                          guestEmail: booking.guestEmail,
+                          guestPhone: booking.guestPhone,
+                          totalAmount: Number(booking.totalAmount),
+                          property: booking.property ? { name: booking.property.name } : undefined,
+                          items: booking.items.map(i => ({
+                             checkIn: i.checkIn,
+                             checkOut: i.checkOut,
+                             room: i.room ? { name: i.room.name } : null
+                          }))
+                       }}
                        taxRate={config.taxRate}
                        serviceChargeRate={config.serviceChargeRate}
                        className="border-white/20 text-white hover:bg-white hover:text-black h-12"

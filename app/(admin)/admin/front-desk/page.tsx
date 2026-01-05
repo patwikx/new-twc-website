@@ -1,7 +1,8 @@
 import { hasPermission, getCurrentRole } from "@/lib/auth-checks";
 import { redirect } from "next/navigation";
-import { getFrontDeskData } from "@/actions/admin/front-desk";
+import { getFrontDeskData, getDashboardStats } from "@/actions/admin/front-desk";
 import { RoomGrid } from "@/components/admin/front-desk/room-grid";
+import { FrontDeskView } from "@/components/admin/front-desk/front-desk-view";
 import { getCurrentPropertyFilter } from "@/lib/data-access";
 import { db } from "@/lib/db";
 
@@ -76,6 +77,9 @@ export default async function FrontDeskPage() {
       orderBy: { name: 'asc' }
    });
 
+  // Fetch Dashboard Stats 
+  const stats = await getDashboardStats(propertyWhere.id as string);
+
   return (
     <div className="space-y-6 pb-20">
        <div className="flex flex-col gap-2">
@@ -85,11 +89,13 @@ export default async function FrontDeskPage() {
           </p>
        </div>
 
-       <RoomGrid 
+       <FrontDeskView 
           rooms={rooms}
           unassignedBookings={unassignedBookings}
           currentUserRole={userRole}
           staffMembers={staffMembers}
+          stats={stats}
+          propertyId={propertyWhere.id as string}
        />
     </div>
   );

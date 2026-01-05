@@ -43,6 +43,12 @@ export async function getFrontDeskData(propertyId: string) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
+  // Fetch Unassigned Confirmed Bookings
+  // We want ALL confirmed bookings that haven't been assigned a unit yet,
+  // regardless of whether they are today or in the future (or even late past ones).
+  // Ideally, we might want to limit "how far back" we look, but for now, 
+  // any CONFIRMED booking without a unit is a candidate for check-in/assignment.
+  
   const unassignedBookings = await db.bookingItem.findMany({
     where: {
       room: { propertyId },
@@ -50,9 +56,7 @@ export async function getFrontDeskData(propertyId: string) {
       booking: {
         status: "CONFIRMED",
       },
-      checkIn: {
-        gte: todayStart, // Filter for upcoming/today
-      },
+      // Removed checkIn: { gte: todayStart } to include late arrivals from yesterday
     },
     include: {
       booking: true,
@@ -62,6 +66,190 @@ export async function getFrontDeskData(propertyId: string) {
   });
 
   return { rooms, unassignedBookings };
+}
+
+export async function getDashboardStats(propertyId: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  // 1. Arrivals (Confirmed check-ins today or past unassigned)
+  const arrivalsCount = await db.bookingItem.count({
+    where: {
+      room: { propertyId },
+      booking: { status: "CONFIRMED" },
+      roomUnitId: null, // "Arrival" usually implies not yet in room? Or checking in today.
+      // Actually, if we use the same logic as unassignedBookings:
+    }
+  });
+  
+  // Let's match the "Arrivals" card to "Unassigned Bookings" logic essentially,
+  // PLUS assigned bookings checking in today that aren't yet "Occupied" (if such state exists separately).
+  // For simplicity V1: Arrivals = Unassigned Confirmed Bookings.
+  // We can refine. "Arrivals" usually means strictly CheckIn Date = Today.
+  // But our "Check In" list shows past ones too. Let's align with that.
+  
+  const arrivals = await db.bookingItem.count({
+    where: {
+      room: { propertyId },
+      roomUnitId: null,
+      booking: { status: "CONFIRMED" }
+    }
+  });
+
+  // 2. In House (Occupied Units)
+  const inHouse = await db.roomUnit.count({
+    where: {
+      roomType: { propertyId },
+      status: "OCCUPIED"
+    }
+  });
+
+  // 3. Departures (Check-out today AND currently In House/Confirmed)
+  // We look for BookingItems checking out today where the Booking is Confirmed (active)
+  const departures = await db.bookingItem.count({
+    where: {
+      room: { propertyId },
+      checkOut: {
+        gte: today,
+        lt: tomorrow
+      },
+      booking: { status: "CONFIRMED" },
+      roomUnitId: { not: null } // Must be assigned to be departing? Or just confirmed reservation ending.
+    }
+  });
+
+  // 4. Available Units
+  const available = await db.roomUnit.count({
+    where: {
+      roomType: { propertyId },
+      status: "CLEAN" // simple availability
+    }
+  });
+
+  return { arrivals, inHouse, departures, available };
+}
+
+export async function getCalendarData(propertyId: string, month: Date) {
+  // Get start and end of month
+  const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
+  const endOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+
+  // Fetch all units count
+  const totalUnits = await db.roomUnit.count({ where: { roomType: { propertyId } } });
+
+  // Fetch Booking Items
+  const bookings = await db.bookingItem.findMany({
+      where: {
+          room: { propertyId },
+          booking: { status: { in: ['CONFIRMED', 'PENDING'] } },
+          OR: [
+              { checkIn: { lte: endOfMonth }, checkOut: { gte: startOfMonth } }
+          ]
+      },
+      select: { 
+          id: true,
+          checkIn: true, 
+          checkOut: true,
+          booking: { 
+             select: { 
+                guestFirstName: true, 
+                guestLastName: true, 
+                status: true 
+             }
+          },
+          room: { select: { name: true } },
+          roomUnit: { select: { number: true } }
+      }
+  });
+
+  // Fetch Events
+  const events = await db.event.findMany({
+      where: {
+          propertyId,
+          status: { not: 'CANCELLED' }, // Exclude cancelled? Or show them crossed out? Let's show active.
+          OR: [
+             { startDate: { lte: endOfMonth }, endDate: { gte: startOfMonth } }
+          ]
+      },
+      include: {
+        bookings: {
+            select: {
+                id: true,
+                items: {
+                    select: {
+                        room: { select: { name: true } },
+                        roomUnit: { select: { number: true } }
+                    }
+                }
+            }
+        }
+      }
+  });
+
+  // Aggregate per day
+  const days = [];
+  const iter = new Date(startOfMonth);
+  while (iter <= endOfMonth) {
+      const dayStart = new Date(iter);
+      dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(iter);
+      dayEnd.setHours(23,59,59,999);
+
+      // Active Bookings for this day
+      const activeBookings = bookings.filter(b => {
+          const bStart = new Date(b.checkIn);
+          const bEnd = new Date(b.checkOut);
+          bStart.setHours(0,0,0,0);
+          bEnd.setHours(0,0,0,0);
+          const current = new Date(iter);
+          current.setHours(0,0,0,0);
+          return current >= bStart && current < bEnd; 
+      }).map(b => ({
+          id: b.id,
+          guestName: `${b.booking.guestFirstName} ${b.booking.guestLastName}`,
+          roomName: b.room.name,
+          unitNumber: b.roomUnit?.number || "Unassigned",
+          status: b.booking.status
+      }));
+
+      days.push({
+          date: new Date(iter),
+          total: totalUnits,
+          occupied: activeBookings.length,
+          available: totalUnits - activeBookings.length,
+          bookings: activeBookings
+      });
+      iter.setDate(iter.getDate() + 1);
+  }
+
+  return { days, events };
+}
+
+export async function createEvent(data: {
+    propertyId: string;
+    title: string;
+    startDate: Date;
+    endDate: Date;
+    description?: string;
+    roomCount?: number;
+    guestCount?: number;
+    menuDetails?: string;
+    status: 'TENTATIVE' | 'CONFIRMED';
+}) {
+    const session = await auth();
+    if(!session?.user) throw new Error("Unauthorized");
+
+    const event = await db.event.create({
+        data: {
+            ...data,
+            createdById: session.user.id
+        }
+    });
+
+    revalidatePath("/admin/calendar");
+    return { success: true, event };
 }
 
 export async function getBookingFinancials(bookingId: string) {
