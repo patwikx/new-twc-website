@@ -69,11 +69,16 @@ export const apiAuthPrefix = "/api/auth";
  */
 export const publicApiRoutes = [
   "/api/email",
+  "api/chat",
   "/api/contact",
   "/api/newsletter",
   "/api/bookings/status",
   "/api/payments/create-checkout",
   "/api/webhooks/paymongo",
+  // Availability APIs for public booking widget
+  "/api/availability",
+  "/api/availability/bulk",
+  "/api/availability/calendar",
 ];
 
 /**

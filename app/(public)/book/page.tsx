@@ -5,20 +5,18 @@ import { Input } from "@/components/ui/input";
 import { getCouponByCode } from "@/actions/public/coupons";
 import { getGlobalConfig } from "@/actions/public/properties";
 import { CartItem, useCartStore } from "@/store/useCartStore";
-import { motion } from "framer-motion";
-import { CreditCard, Lock, Check, X, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { Lock, Check, X, Loader2, AlertCircle } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { addDays, differenceInDays, parseISO, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/booking/DateRangePicker";
+import { Calendar } from "@/components/ui/calendar";
 import { createBooking } from "@/actions/create-booking";
 import {
    Command,
-   CommandEmpty,
    CommandGroup,
-   CommandInput,
    CommandItem,
    CommandList,
 } from "@/components/ui/command";
@@ -27,10 +25,27 @@ import {
    PopoverContent,
    PopoverTrigger,
 } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown } from "lucide-react";
 import { useSession } from "next-auth/react";
+
+// Availability validation types
+interface AvailabilityResult {
+   roomTypeId: string;
+   totalUnits: number;
+   bookedUnits: number;
+   availableUnits: number;
+   available: boolean;
+   limitedAvailability: boolean;
+}
+
+interface CartItemAvailability {
+   itemId: string;
+   roomId: string;
+   available: boolean;
+   availableUnits: number;
+   error?: string;
+}
 
 
 function BookingForm() {
@@ -74,7 +89,11 @@ function BookingForm() {
          } catch (e) {
             console.error("Failed to parse cart", e);
          }
-      } else if (!propertySlug && !roomId && storedItems.length > 0) {
+      }
+   }, [cartParam]);
+
+   useEffect(() => {
+      if (!cartParam && !propertySlug && !roomId && storedItems.length > 0) {
          // If no direct booking params, try loading from store
          setCartItems(storedItems.map(item => ({
             ...item,
@@ -86,9 +105,13 @@ function BookingForm() {
    }, [cartParam, propertySlug, roomId, storedItems]);
 
    // Single Room State
-   const [date, setDate] = useState<DateRange | undefined>({
-      from: checkInParam ? parseISO(checkInParam) : new Date(),
-      to: checkOutParam ? parseISO(checkOutParam) : addDays(new Date(), 1),
+   const [date, setDate] = useState<DateRange | undefined>(() => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return {
+         from: checkInParam ? parseISO(checkInParam) : today,
+         to: checkOutParam ? parseISO(checkOutParam) : addDays(today, 1),
+      };
    });
 
    const property = propertySlug ? null : null; // Property lookup moved to cart item embedded data
@@ -101,8 +124,8 @@ function BookingForm() {
    const [isLoading, setIsLoading] = useState(false);
    const [paymentError, setPaymentError] = useState("");
    const [pollingBookingId, setPollingBookingId] = useState<string | null>(null);
-   const [bookingShortRef, setBookingShortRef] = useState<string | null>(null);
    const clearCart = useCartStore((state) => state.clearCart);
+   const updateCartItem = useCartStore((state) => state.updateItem);
 
    const [guestDetails, setGuestDetails] = useState({
       firstName: "",
@@ -139,6 +162,139 @@ function BookingForm() {
 
    // Single Room Guest Count
    const [singleGuestCount, setSingleGuestCount] = useState(2);
+
+   // Availability validation state
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [singleRoomAvailability, setSingleRoomAvailability] = useState<AvailabilityResult | null>(null);
+   const [cartItemsAvailability, setCartItemsAvailability] = useState<CartItemAvailability[]>([]);
+   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+   // Check availability for a single room type
+   const checkSingleRoomAvailability = useCallback(async (
+      roomTypeId: string,
+      checkIn: Date,
+      checkOut: Date
+   ) => {
+      if (!roomTypeId || !checkIn || !checkOut) return;
+      
+      setAvailabilityLoading(true);
+      setAvailabilityError(null);
+      
+      try {
+         const response = await fetch('/api/availability/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+               checks: [{
+                  roomTypeId,
+                  checkIn: checkIn.toISOString(),
+                  checkOut: checkOut.toISOString()
+               }]
+            })
+         });
+
+         if (!response.ok) {
+            throw new Error('Failed to check availability');
+         }
+
+         const results: AvailabilityResult[] = await response.json();
+         if (results.length > 0) {
+            setSingleRoomAvailability(results[0]);
+            if (!results[0].available) {
+               setAvailabilityError('This room type is fully booked for your selected dates');
+            }
+         }
+      } catch (error) {
+         console.error('Error checking availability:', error);
+         setAvailabilityError('Unable to verify availability. Please try again.');
+      } finally {
+         setAvailabilityLoading(false);
+      }
+   }, []);
+
+   // Check availability for all cart items independently
+   const checkCartItemsAvailability = useCallback(async (items: CartItem[]) => {
+      if (items.length === 0) return;
+      
+      setAvailabilityLoading(true);
+      setAvailabilityError(null);
+      
+      try {
+         // Build checks for all cart items
+         const checks = items.map(item => ({
+            roomTypeId: item.roomId,
+            checkIn: new Date(item.checkIn).toISOString(),
+            checkOut: new Date(item.checkOut).toISOString()
+         }));
+
+         const response = await fetch('/api/availability/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ checks })
+         });
+
+         if (!response.ok) {
+            throw new Error('Failed to check availability');
+         }
+
+         const results: AvailabilityResult[] = await response.json();
+         
+         // Map results to cart items
+         const itemAvailability: CartItemAvailability[] = items.map((item, index) => {
+            const result = results[index];
+            return {
+               itemId: item.id,
+               roomId: item.roomId,
+               available: result?.available ?? false,
+               availableUnits: result?.availableUnits ?? 0,
+               error: result?.available === false 
+                  ? `${item.roomName || 'This room'} is fully booked for your selected dates`
+                  : undefined
+            };
+         });
+
+         setCartItemsAvailability(itemAvailability);
+         
+         // Set global error if any items are unavailable
+         const unavailableItems = itemAvailability.filter(a => !a.available);
+         if (unavailableItems.length > 0) {
+            setAvailabilityError(
+               unavailableItems.length === 1
+                  ? unavailableItems[0].error!
+                  : `${unavailableItems.length} items in your cart are no longer available`
+            );
+         }
+      } catch (error) {
+         console.error('Error checking cart availability:', error);
+         setAvailabilityError('Unable to verify availability. Please try again.');
+      } finally {
+         setAvailabilityLoading(false);
+      }
+   }, []);
+
+   // Check availability when dates change for single room mode
+   useEffect(() => {
+      if (!isCartMode && roomId && date?.from && date?.to) {
+         checkSingleRoomAvailability(roomId, date.from, date.to);
+      }
+   }, [isCartMode, roomId, date?.from, date?.to, checkSingleRoomAvailability]);
+
+   // Check availability when cart items change
+   useEffect(() => {
+      if (isCartMode && cartItems.length > 0) {
+         checkCartItemsAvailability(cartItems);
+      }
+   }, [isCartMode, cartItems, checkCartItemsAvailability]);
+
+   // Helper to get availability for a specific cart item
+   const getCartItemAvailability = (itemId: string): CartItemAvailability | undefined => {
+      return cartItemsAvailability.find(a => a.itemId === itemId);
+   };
+
+   // Check if booking can proceed (all items available)
+   const canProceedWithBooking = isCartMode
+      ? cartItemsAvailability.length > 0 && cartItemsAvailability.every(a => a.available)
+      : singleRoomAvailability?.available ?? true;
 
    // Calculations
    const cartSubtotal = cartItems.reduce((acc, item) => {
@@ -338,12 +494,14 @@ function BookingForm() {
 
    return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-         {/* Form - Second on mobile, first (left) on desktop */}
+         {/* Left Column - Guest Details Form */}
          <div className="lg:col-span-7 lg:order-1 space-y-6 order-2">
             <div className="mb-12">
                <h1 className="text-4xl md:text-6xl font-serif font-light mb-4">Secure Checkout</h1>
                <p className="text-neutral-400">Complete your reservation.</p>
             </div>
+            
+            {/* Guest Details Form */}
             <div>
                <h2 className="text-3xl font-serif italic mb-6">Guest Details</h2>
                <form id="booking-form" onSubmit={handleBooking} className="space-y-4">
@@ -372,23 +530,404 @@ function BookingForm() {
                </form>
             </div>
 
-            <div className="border-t border-white/10 pt-6">
-               <h2 className="text-3xl font-serif italic mb-6">Enhance Your Stay</h2>
-               <div className="grid grid-cols-1 gap-4">
+            {/* Payment Error Message */}
+            {paymentError && (
+               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20">
+                  <X className="h-4 w-4" />
+                  {paymentError}
+               </div>
+            )}
+
+            {/* Availability Error Message */}
+            {availabilityError && !paymentError && (
+               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20">
+                  <AlertCircle className="h-4 w-4" />
+                  {availabilityError}
+               </div>
+            )}
+
+            {/* Payment Button */}
+            <Button
+               type="submit"
+               form="booking-form"
+               disabled={isLoading || availabilityLoading || !canProceedWithBooking || !guestDetails.firstName || !guestDetails.lastName || !guestDetails.email || !guestDetails.phone}
+               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-white text-black hover:bg-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            >
+               {isLoading ? (
+                  <>
+                     <Loader2 className="h-5 w-5 animate-spin" />
+                     Processing...
+                  </>
+               ) : availabilityLoading ? (
+                  <>
+                     <Loader2 className="h-5 w-5 animate-spin" />
+                     Checking Availability...
+                  </>
+               ) : !canProceedWithBooking ? (
+                  <>
+                     <AlertCircle className="h-4 w-4" />
+                     Room Unavailable
+                  </>
+               ) : (
+                  <>
+                     <Lock className="h-4 w-4" />
+                     Proceed to Secure Payment
+                  </>
+               )}
+            </Button>
+            <p className="text-xs text-center text-neutral-500">You will be redirected to PayMongo to complete your payment securely.</p>
+         </div>
+         {/* Right Column - Booking Summary */}
+         <div className="lg:col-span-5 lg:order-2 order-1">
+            <div className="sticky top-32 bg-neutral-900/50 border border-white/10 p-6 space-y-6">
+               <h3 className="text-lg font-medium border-b border-white/10 pb-4">Booking Summary</h3>
+
+               {/* Your Stay - Room Details with Dates & Guests */}
+               <div className="space-y-4">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500">Your Stay</h4>
+                  
+                  {/* Room Items */}
+                  {isCartMode ? (
+                     <div className="space-y-4">
+                        {cartItems.map((item, index) => (
+                           <div key={item.id || index} className="bg-neutral-900/50 border border-white/5 overflow-hidden">
+                              {/* Room Image */}
+                              {item.roomImage && (
+                                 <div className="relative h-32 w-full">
+                                    <Image
+                                       src={item.roomImage}
+                                       alt={item.roomName || 'Room'}
+                                       fill
+                                       className="object-cover"
+                                    />
+                                 </div>
+                              )}
+                              <div className="p-3 space-y-3">
+                                 <div className="flex justify-between items-start">
+                                    <div>
+                                       <p className="font-medium text-sm">{item.roomName || 'Room'}</p>
+                                       <p className="text-xs text-neutral-400">{item.propertyName || 'Property'}</p>
+                                    </div>
+                                    <span className="text-sm font-medium">₱{((item.roomPrice || 0) * Math.max(1, differenceInDays(item.checkOut, item.checkIn))).toLocaleString()}</span>
+                                 </div>
+                                 
+                                 {/* Editable Dates & Guests */}
+                                 <div className="space-y-3">
+                                    <div className="grid grid-cols-3 gap-2">
+                                       <div className="space-y-1">
+                                          <p className="text-xs uppercase tracking-widest text-neutral-500">Check-in</p>
+                                          <Popover>
+                                             <PopoverTrigger asChild>
+                                                <Button
+                                                   variant={"outline"}
+                                                   className={cn(
+                                                      "w-full justify-start text-left font-normal bg-transparent border-white/20 text-white h-9 px-3 text-xs rounded-none hover:bg-white/5",
+                                                      !item.checkIn && "text-muted-foreground"
+                                                   )}
+                                                >
+                                                   {item.checkIn ? format(new Date(item.checkIn), "MMM dd, y") : <span>Pick date</span>}
+                                                </Button>
+                                             </PopoverTrigger>
+                                             <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800" align="start">
+                                                <Calendar
+                                                   mode="single"
+                                                   selected={new Date(item.checkIn)}
+                                                   onSelect={(date) => {
+                                                      if (!date) return;
+                                                      const newDate = new Date(date);
+                                                      newDate.setHours(0,0,0,0);
+                                                      
+                                                      const currentCheckOut = new Date(item.checkOut);
+                                                      let newCheckOut = new Date(currentCheckOut);
+                                                      if (newDate >= currentCheckOut) {
+                                                         newCheckOut = addDays(newDate, 1);
+                                                      }
+
+                                                      const updatedItems = cartItems.map((ci, i) => 
+                                                         i === index ? { ...ci, checkIn: newDate, checkOut: newCheckOut } : ci
+                                                      );
+                                                      setCartItems(updatedItems);
+                                                      if (item.id) {
+                                                         updateCartItem(item.id, { checkIn: newDate, checkOut: newCheckOut });
+                                                      }
+                                                   }}
+                                                   disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                                                   initialFocus
+                                                   className="text-white"
+                                                   classNames={{
+                                                      day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                                                      day_today: "bg-neutral-800 text-white",
+                                                      day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                                                   }}
+                                                />
+                                             </PopoverContent>
+                                          </Popover>
+                                       </div>
+                                       <div className="space-y-1">
+                                          <p className="text-xs uppercase tracking-widest text-neutral-500">Check-out</p>
+                                          <Popover>
+                                             <PopoverTrigger asChild>
+                                                <Button
+                                                   variant={"outline"}
+                                                   className={cn(
+                                                      "w-full justify-start text-left font-normal bg-transparent border-white/20 text-white h-9 px-3 text-xs rounded-none hover:bg-white/5",
+                                                      !item.checkOut && "text-muted-foreground"
+                                                   )}
+                                                >
+                                                   {item.checkOut ? format(new Date(item.checkOut), "MMM dd, y") : <span>Pick date</span>}
+                                                </Button>
+                                             </PopoverTrigger>
+                                             <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800" align="start">
+                                                <Calendar
+                                                   mode="single"
+                                                   selected={new Date(item.checkOut)}
+                                                   onSelect={(date) => {
+                                                      if (!date) return;
+                                                      const newDate = date;
+                                                      newDate.setHours(0,0,0,0);
+
+                                                      const updatedItems = cartItems.map((ci, i) => 
+                                                         i === index ? { ...ci, checkOut: newDate } : ci
+                                                      );
+                                                      setCartItems(updatedItems);
+                                                      if (item.id) {
+                                                         updateCartItem(item.id, { checkOut: newDate });
+                                                      }
+                                                   }}
+                                                   disabled={(date) => {
+                                                      const checkIn = new Date(item.checkIn);
+                                                      return date <= checkIn;
+                                                   }}
+                                                   initialFocus
+                                                   className="text-white"
+                                                   classNames={{
+                                                      day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                                                      day_today: "bg-neutral-800 text-white",
+                                                      day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                                                   }}
+                                                />
+                                             </PopoverContent>
+                                          </Popover>
+                                       </div>
+                                    <div className="space-y-1">
+                                       <p className="text-xs uppercase tracking-widest text-neutral-500">Guests</p>
+                                       <select
+                                          value={item.guests}
+                                          onChange={(e) => {
+                                             const newGuests = Number(e.target.value);
+                                             const updatedItems = cartItems.map((ci, i) => 
+                                                i === index ? { ...ci, guests: newGuests } : ci
+                                             );
+                                             setCartItems(updatedItems);
+                                             if (item.id) {
+                                                updateCartItem(item.id, { guests: newGuests });
+                                             }
+                                          }}
+                                          className="w-full bg-neutral-950 border border-white/10 text-white h-10 px-3 text-sm rounded-none focus:border-orange-500/50 focus:ring-0 cursor-pointer"
+                                       >
+                                          {Array.from({ length: 6 }, (_, i) => i + 1).map((num) => (
+                                             <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
+                                          ))}
+                                       </select>
+                                    </div>
+                                 </div>
+                                 </div>
+                                 
+                                 {/* Per-item availability status */}
+                                 {(() => {
+                                    const itemAvailability = getCartItemAvailability(item.id);
+                                    if (itemAvailability) {
+                                       if (!itemAvailability.available) {
+                                          return (
+                                             <div className="flex items-center gap-2 text-red-400 text-xs bg-red-400/10 p-2 border border-red-400/20">
+                                                <AlertCircle className="h-3 w-3" />
+                                                <span>{itemAvailability.error || 'Not available for selected dates'}</span>
+                                             </div>
+                                          );
+                                       } else if (itemAvailability.availableUnits > 0) {
+                                          return (
+                                             <div className="flex items-center gap-2 text-xs">
+                                                <span className={cn(
+                                                   "px-2 py-1",
+                                                   itemAvailability.availableUnits <= 2 
+                                                      ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                                                      : "bg-green-500/10 text-green-400 border border-green-500/20"
+                                                )}>
+                                                   {itemAvailability.availableUnits} unit{itemAvailability.availableUnits !== 1 ? 's' : ''} available
+                                                </span>
+                                             </div>
+                                          );
+                                       }
+                                    }
+                                    return null;
+                                 })()}
+                                 
+                                 <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
+                                    <span className="text-neutral-400">{Math.max(1, differenceInDays(item.checkOut, item.checkIn))} Night{Math.max(1, differenceInDays(item.checkOut, item.checkIn)) > 1 ? 's' : ''}</span>
+                                    <span className="text-neutral-400">₱{(item.roomPrice || 0).toLocaleString()}/night</span>
+                                 </div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                     <div className="bg-neutral-900/50 border border-white/5 overflow-hidden">
+                        <div className="relative h-32 w-full bg-neutral-800">
+                           <div className="absolute inset-0 flex items-center justify-center text-neutral-500 text-sm">
+                              Room Preview
+                           </div>
+                        </div>
+                        <div className="p-3 space-y-3">
+                           <p className="font-medium text-sm">Selected Room</p>
+                           
+                           {/* Editable Dates & Guests */}
+                           <div className="space-y-3">
+                              <div className="grid grid-cols-2 gap-3">
+                                 <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-widest text-neutral-500">Check-in</p>
+                                    <Popover>
+                                       <PopoverTrigger asChild>
+                                          <Button
+                                             variant={"outline"}
+                                             className={cn(
+                                                "w-full justify-start text-left font-normal bg-transparent border-white/20 text-white h-9 px-3 text-xs rounded-none hover:bg-white/5",
+                                                !date?.from && "text-muted-foreground"
+                                             )}
+                                          >
+                                             {date?.from ? format(date.from, "MMM dd, y") : <span>Pick date</span>}
+                                          </Button>
+                                       </PopoverTrigger>
+                                       <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800" align="start">
+                                          <Calendar
+                                             mode="single"
+                                             selected={date?.from}
+                                             onSelect={(newDate) => {
+                                                if (!newDate) return;
+                                                const newDateNormalized = newDate;
+                                                newDateNormalized.setHours(0,0,0,0);
+                                                
+                                                if (date?.to && newDateNormalized >= date.to) {
+                                                   setDate({ from: newDateNormalized, to: addDays(newDateNormalized, 1) });
+                                                } else {
+                                                   setDate({ ...date, from: newDateNormalized });
+                                                }
+                                             }}
+                                             disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                                             initialFocus
+                                             className="text-white"
+                                             classNames={{
+                                                day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                                                day_today: "bg-neutral-800 text-white",
+                                                day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                                             }}
+                                          />
+                                       </PopoverContent>
+                                    </Popover>
+                                 </div>
+                                 <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-widest text-neutral-500">Check-out</p>
+                                    <Popover>
+                                       <PopoverTrigger asChild>
+                                          <Button
+                                             variant={"outline"}
+                                             className={cn(
+                                                "w-full justify-start text-left font-normal bg-transparent border-white/20 text-white h-9 px-3 text-xs rounded-none hover:bg-white/5",
+                                                !date?.to && "text-muted-foreground"
+                                             )}
+                                          >
+                                             {date?.to ? format(date.to, "MMM dd, y") : <span>Pick date</span>}
+                                          </Button>
+                                       </PopoverTrigger>
+                                       <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800" align="start">
+                                          <Calendar
+                                             mode="single"
+                                             selected={date?.to}
+                                             onSelect={(newDate) => {
+                                                if (!newDate) return;
+                                                const newDateNormalized = newDate;
+                                                newDateNormalized.setHours(0,0,0,0);
+                                                setDate({ ...date, to: newDateNormalized, from: date?.from });
+                                             }}
+                                             disabled={(day) => {
+                                                if (!date?.from) return false;
+                                                return day <= date.from;
+                                             }}
+                                             initialFocus
+                                             className="text-white"
+                                             classNames={{
+                                                day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                                                day_today: "bg-neutral-800 text-white",
+                                                day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                                             }}
+                                          />
+                                       </PopoverContent>
+                                    </Popover>
+                                 </div>
+                              </div>
+                              <div className="space-y-1">
+                                 <p className="text-xs uppercase tracking-widest text-neutral-500">Guests</p>
+                                 <select
+                                    value={singleGuestCount}
+                                    onChange={(e) => setSingleGuestCount(Number(e.target.value))}
+                                    className="w-full bg-neutral-950 border border-white/10 text-white h-10 px-3 text-sm rounded-none focus:border-orange-500/50 focus:ring-0 cursor-pointer"
+                                 >
+                                    {Array.from({ length: 6 }, (_, i) => i + 1).map((num) => (
+                                       <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
+                                    ))}
+                                 </select>
+                              </div>
+                           </div>
+                           
+                           {/* Single room availability status */}
+                           {singleRoomAvailability && (
+                              <div className="pt-2">
+                                 {!singleRoomAvailability.available ? (
+                                    <div className="flex items-center gap-2 text-red-400 text-xs bg-red-400/10 p-2 border border-red-400/20">
+                                       <AlertCircle className="h-3 w-3" />
+                                       <span>Not available for selected dates</span>
+                                    </div>
+                                 ) : (
+                                    <div className="flex items-center gap-2 text-xs">
+                                       <span className={cn(
+                                          "px-2 py-1",
+                                          singleRoomAvailability.availableUnits <= 2 
+                                             ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                                             : "bg-green-500/10 text-green-400 border border-green-500/20"
+                                       )}>
+                                          {singleRoomAvailability.availableUnits} unit{singleRoomAvailability.availableUnits !== 1 ? 's' : ''} available
+                                       </span>
+                                    </div>
+                                 )}
+                              </div>
+                           )}
+                           {availabilityLoading && (
+                              <div className="flex items-center gap-2 text-xs text-neutral-400">
+                                 <Loader2 className="h-3 w-3 animate-spin" />
+                                 <span>Checking availability...</span>
+                              </div>
+                           )}
+                        </div>
+                     </div>
+                  )}
+               </div>
+
+               {/* Add-ons Section */}
+               <div className="border-t border-white/10 pt-4 space-y-3">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500">Enhance Your Stay</h4>
                   <Popover>
                      <PopoverTrigger asChild>
                         <Button
                            variant="outline"
                            role="combobox"
-                           className="w-full justify-between h-14 bg-neutral-950 border-white/10 text-white hover:bg-white/5 hover:text-white rounded-none uppercase tracking-widest text-xs"
+                           className="w-full justify-between h-12 bg-neutral-950 border-white/10 text-white hover:bg-white/5 hover:text-white rounded-none text-xs"
                         >
                            {selectedExtras.length > 0
-                              ? `${selectedExtras.length} Item${selectedExtras.length > 1 ? 's' : ''} Selected`
+                              ? `${selectedExtras.length} Add-on${selectedExtras.length > 1 ? 's' : ''} Selected`
                               : "Select Add-ons (Optional)"}
                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                      </PopoverTrigger>
-                     <PopoverContent className="w-[500px] p-0 bg-neutral-900 border-white/10 rounded-none" align="start">
+                     <PopoverContent className="w-[300px] p-0 bg-neutral-900 border-white/10 rounded-none" align="start">
                         <Command className="bg-transparent text-white">
                            <CommandList>
                               <CommandGroup>
@@ -397,10 +936,10 @@ function BookingForm() {
                                        key={extra.id}
                                        value={extra.label}
                                        onSelect={() => toggleExtra(extra.id)}
-                                       className="cursor-pointer hover:bg-white/10 aria-selected:bg-white/10 py-4"
+                                       className="cursor-pointer hover:bg-white/10 aria-selected:bg-white/10 py-3"
                                     >
                                        <div className={cn(
-                                          "mr-4 flex h-4 w-4 items-center justify-center border transition-colors border-white/30",
+                                          "mr-3 flex h-4 w-4 items-center justify-center border transition-colors border-white/30",
                                           selectedExtras.includes(extra.id) ? "bg-orange-500 border-orange-500" : "bg-transparent"
                                        )}>
                                           <Check
@@ -411,8 +950,8 @@ function BookingForm() {
                                           />
                                        </div>
                                        <div className="flex flex-1 justify-between items-center">
-                                          <span className="text-sm font-light tracking-wide">{extra.label}</span>
-                                          <span className="text-sm font-serif italic text-neutral-400">₱{extra.price.toLocaleString()}</span>
+                                          <span className="text-xs">{extra.label}</span>
+                                          <span className="text-xs text-neutral-400">₱{extra.price.toLocaleString()}</span>
                                        </div>
                                     </CommandItem>
                                  ))}
@@ -422,157 +961,101 @@ function BookingForm() {
                      </PopoverContent>
                   </Popover>
                </div>
-            </div>
 
-            {/* Payment Error Message */}
-            {paymentError && (
-               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 border border-red-400/20">
-                  <X className="h-4 w-4" />
-                  {paymentError}
-               </div>
-            )}
-
-            <Button
-               type="submit"
-               form="booking-form"
-               disabled={isLoading || !guestDetails.firstName || !guestDetails.lastName || !guestDetails.email || !guestDetails.phone}
-               className="w-full h-16 rounded-none text-sm uppercase tracking-widest bg-white text-black hover:bg-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-            >
-               {isLoading ? (
-                  <>
-                     <Loader2 className="h-5 w-5 animate-spin" />
-                     Processing...
-                  </>
-               ) : (
-                  <>
-                     <Lock className="h-4 w-4" />
-                     Proceed to Secure Payment
-                  </>
-               )}
-            </Button>
-            <p className="text-xs text-center text-neutral-500">You will be redirected to PayMongo to complete your payment securely.</p>
-
-            <div className="border-t border-white/10 pt-12">
-               <h2 className="text-3xl font-serif italic mb-6">Property Policies</h2>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
-                  {config.policies.map((policy, index) => (
-                     <div key={index} className="space-y-2">
-                        <h4 className="uppercase tracking-widest text-xs text-neutral-500">{policy.title}</h4>
-                        <p className="text-neutral-300 font-light leading-relaxed">{policy.description}</p>
-                     </div>
-                  ))}
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div>
-                     <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
-                        Dates <span className="text-orange-500/70 normal-case text-[10px]">(Click to change)</span>
-                     </p>
-                     <DateRangePicker
-                        date={date}
-                        setDate={setDate}
-                        className="text-sm border-white/20"
-                     />
-                  </div>
-                  <div>
-                     <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">
-                        Guests <span className="text-orange-500/70 normal-case text-[10px]">(Max 2)</span>
-                     </p>
-                     <select
-                        value={singleGuestCount}
-                        onChange={(e) => setSingleGuestCount(Number(e.target.value))}
-                        className="w-full bg-neutral-950 border border-white/10 text-white h-10 px-3 text-sm rounded-none focus:border-orange-500/50 focus:ring-0 cursor-pointer"
-                     >
-                        {Array.from({ length: 2 }, (_, i) => i + 1).map((num) => (
-                           <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
-                        ))}
-                     </select>
-                  </div>
-               </div>
-            </div>
-
-         <div className="pt-4 border-t border-white/10">
-            <p className="text-xs uppercase tracking-widest text-neutral-500 mb-2">Promo Code</p>
-            {appliedCoupon ? (
-               <div className="flex justify-between items-center bg-white/5 p-3 border border-white/10">
-                  <div className="flex items-center gap-2">
-                     <Check className="h-4 w-4 text-green-500" />
-                     <span className="text-sm font-medium">{appliedCoupon.code}</span>
-                  </div>
-                  <Button
-                     variant="ghost"
-                     size="sm"
-                     onClick={handleRemoveCoupon}
-                     className="h-auto p-0 text-neutral-400 hover:text-white hover:bg-transparent"
-                  >
-                     <X className="h-4 w-4" />
-                  </Button>
-               </div>
-            ) : (
-               <div className="space-y-2">
-                  <div className="flex gap-2">
-                     <Input
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value)}
-                        placeholder="Enter code"
-                        className="bg-neutral-950 border-white/10 text-white h-10 text-xs rounded-none focus:border-orange-500/50"
-                     />
-                     <Button
-                        onClick={handleApplyCoupon}
-                        disabled={!couponCode}
-                        className="h-10 px-4 bg-white text-black text-xs uppercase tracking-widest rounded-none hover:bg-neutral-200"
-                     >
-                        Apply
-                     </Button>
-                  </div>
-                  {couponError && <p className="text-red-500 text-[10px]">{couponError}</p>}
-               </div>
-            )}
-         </div>
-         {/* End left column */}
-         </div>
-         {/* Right Column - Booking Summary */}
-         <div className="lg:col-span-5 lg:order-2 order-1">
-          <div className="sticky top-32 bg-neutral-900/50 border border-white/10 p-6 space-y-6">
-             <h3 className="text-lg font-medium border-b border-white/10 pb-4">Booking Summary</h3>
-
-          <div className="space-y-2 text-sm">
-             <div className="flex justify-between">
-                <span className="text-neutral-400">{isCartMode ? 'Full Stay Total' : `Room Rate x ${singleNights} Night${singleNights > 1 ? 's' : ''}`}</span>
-               <span>₱{roomSubtotal.toLocaleString()}</span>
-            </div>
-            {appliedCoupon && (
-               <div className="flex justify-between text-green-500">
-                  <span>Discount ({appliedCoupon.code})</span>
-                  <span>-₱{discountAmount.toLocaleString()}</span>
-               </div>
-            )}
-            {selectedExtras.length > 0 && (
-               <div className="py-2 space-y-1 border-t border-white/5 my-2">
-                  {selectedExtras.map(id => {
-                     const extra = EXTRAS.find(e => e.id === id);
-                     return (
-                        <div key={id} className="flex justify-between text-neutral-300">
-                           <span>{extra?.label}</span>
-                           <span>₱{extra?.price.toLocaleString()}</span>
+               {/* Promo Code Section */}
+               <div className="border-t border-white/10 pt-4 space-y-3">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500">Promo Code</h4>
+                  {appliedCoupon ? (
+                     <div className="flex justify-between items-center bg-white/5 p-3 border border-white/10">
+                        <div className="flex items-center gap-2">
+                           <Check className="h-4 w-4 text-green-500" />
+                           <span className="text-sm font-medium">{appliedCoupon.code}</span>
                         </div>
-                     );
-                  })}
+                        <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={handleRemoveCoupon}
+                           className="h-auto p-0 text-neutral-400 hover:text-white hover:bg-transparent"
+                        >
+                           <X className="h-4 w-4" />
+                        </Button>
+                     </div>
+                  ) : (
+                     <div className="space-y-2">
+                        <div className="flex gap-2">
+                           <Input
+                              value={couponCode}
+                              onChange={(e) => setCouponCode(e.target.value)}
+                              placeholder="Enter code"
+                              className="bg-neutral-950 border-white/10 text-white h-10 text-xs rounded-none focus:border-orange-500/50"
+                           />
+                           <Button
+                              onClick={handleApplyCoupon}
+                              disabled={!couponCode}
+                              className="h-10 px-4 bg-white text-black text-xs uppercase tracking-widest rounded-none hover:bg-neutral-200"
+                           >
+                              Apply
+                           </Button>
+                        </div>
+                        {couponError && <p className="text-red-500 text-[10px]">{couponError}</p>}
+                     </div>
+                  )}
                </div>
-            )}
-            <div className="flex justify-between">
-               <span className="text-neutral-400">Service Charge ({(config.serviceChargeRate * 100).toFixed(0)}%)</span>
-               <span>₱{serviceCharge.toLocaleString()}</span>
+
+               {/* Price Breakdown */}
+               <div className="space-y-2 text-sm border-t border-white/10 pt-4">
+                  <div className="flex justify-between">
+                     <span className="text-neutral-400">{isCartMode ? 'Room Total' : `Room Rate x ${singleNights} Night${singleNights > 1 ? 's' : ''}`}</span>
+                     <span>₱{roomSubtotal.toLocaleString()}</span>
+                  </div>
+                  {selectedExtras.length > 0 && (
+                     <div className="py-2 space-y-1 border-t border-white/5 my-2">
+                        {selectedExtras.map(id => {
+                           const extra = EXTRAS.find(e => e.id === id);
+                           return (
+                              <div key={id} className="flex justify-between text-neutral-300">
+                                 <span>{extra?.label}</span>
+                                 <span>₱{extra?.price.toLocaleString()}</span>
+                              </div>
+                           );
+                        })}
+                     </div>
+                  )}
+                  {appliedCoupon && (
+                     <div className="flex justify-between text-green-500">
+                        <span>Discount ({appliedCoupon.code})</span>
+                        <span>-₱{discountAmount.toLocaleString()}</span>
+                     </div>
+                  )}
+                  <div className="flex justify-between">
+                     <span className="text-neutral-400">Service Charge ({(config.serviceChargeRate * 100).toFixed(0)}%)</span>
+                     <span>₱{serviceCharge.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                     <span className="text-neutral-400">VAT ({(config.taxRate * 100).toFixed(0)}%)</span>
+                     <span>₱{taxes.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-white/10 pt-4 mt-4 text-lg font-medium">
+                     <span>Total</span>
+                     <span className="text-orange-500">₱{total.toLocaleString()}</span>
+                  </div>
+               </div>
+
+               {/* Property Policies */}
+               {config.policies.length > 0 && (
+                  <div className="border-t border-white/10 pt-4 space-y-3">
+                     <h4 className="text-xs uppercase tracking-widest text-neutral-500">Property Policies</h4>
+                     <div className="space-y-2 text-xs">
+                        {config.policies.map((policy, index) => (
+                           <div key={index}>
+                              <p className="text-neutral-400 font-medium">{policy.title}</p>
+                              <p className="text-neutral-500">{policy.description}</p>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+               )}
             </div>
-            <div className="flex justify-between">
-               <span className="text-neutral-400">VAT ({(config.taxRate * 100).toFixed(0)}%)</span>
-               <span>₱{taxes.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between border-t border-white/10 pt-4 mt-4 text-lg font-medium">
-               <span>Total</span>
-               <span className="text-orange-500">₱{total.toLocaleString()}</span>
-            </div>
-          </div>
-          </div>
          </div>
       </div>
    );

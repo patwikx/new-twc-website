@@ -16,6 +16,15 @@ import {
 import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 // Props interface for receiving database properties
 interface PropertyForBooking {
@@ -36,27 +45,78 @@ interface BookingWidgetProps {
   properties: PropertyForBooking[];
 }
 
+// Room availability data with unit-based information
+interface RoomAvailability {
+  roomId: string;
+  roomName: string;
+  roomImage: string;
+  price: number;
+  capacity: number;
+  availableUnits: number;
+  totalUnits: number;
+  limitedAvailability: boolean;
+}
+
 export function BookingWidget({ properties }: BookingWidgetProps) {
+  // Normalize today to midnight to avoid time comparison issues
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const [date, setDate] = useState<DateRange | undefined>({
-    from: new Date(),
-    to: addDays(new Date(), 3),
+    from: today,
+    to: addDays(today, 3),
   });
   const [selectedProperty, setSelectedProperty] = useState<string>("");
   const [guests, setGuests] = useState("2");
   const [isSearching, setIsSearching] = useState(false);
-  const [availability, setAvailability] = useState<any[] | null>(null);
+  const [availability, setAvailability] = useState<RoomAvailability[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     setIsSearching(true);
     setAvailability(null);
-    // Mock API call - in real app, this would check availability
-    setTimeout(() => {
-      const property = properties.find((p) => p.id === selectedProperty);
-      if (property) {
-        setAvailability(property.rooms); // Return all rooms as "available" for now
-      }
+    setError(null);
+
+    const property = properties.find((p) => p.id === selectedProperty);
+    if (!property || !date?.from || !date?.to) {
       setIsSearching(false);
-    }, 1500);
+      return;
+    }
+
+    try {
+      // Build availability checks for all room types at this property
+      const checks = property.rooms.map(room => ({
+        roomTypeId: room.id,
+        checkIn: date.from!.toISOString(),
+        checkOut: date.to!.toISOString()
+      }));
+
+      // Call bulk availability API
+      const response = await fetch('/api/availability/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checks })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to check availability');
+      }
+
+      const results = await response.json();
+
+      // Filter and map room types to only show those with availableUnits > 0
+      const availableRooms: RoomAvailability[] = filterAvailableRooms(
+        property.rooms,
+        results
+      );
+
+      setAvailability(availableRooms);
+    } catch (err) {
+      console.error('Error checking availability:', err);
+      setError('Unable to check availability. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const [flyingParticle, setFlyingParticle] = useState<{ x: number; y: number } | null>(null);
@@ -81,7 +141,7 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
       {/* Sleek Minimalist Container - Solid & Compact */}
       <div className="bg-neutral-900 border border-white/10 p-0 shadow-2xl flex flex-col xl:flex-row items-stretch relative overflow-visible group rounded-none">
         
-        <div className="grid grid-cols-1 md:grid-cols-3 flex-grow divide-y md:divide-y-0 md:divide-x divide-white/10 border-b xl:border-b-0 xl:border-r border-white/10">
+        <div className="grid grid-cols-1 md:grid-cols-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-white/10 border-b xl:border-b-0 xl:border-r border-white/10">
             {/* Destination */}
             <div className="relative group/input hover:bg-white/5 transition-colors h-16 md:h-20 flex flex-col justify-center px-6">
                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-medium mb-1 block">Destination</label>
@@ -103,14 +163,99 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
                 </Select>
             </div>
 
-            {/* Check-in/out */}
+            {/* Check-in */}
             <div className="relative hover:bg-white/5 transition-colors h-16 md:h-20 flex flex-col justify-center px-6">
-                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-medium mb-1 block">Dates</label>
-                 <DateRangePicker 
-                    date={date} 
-                    setDate={setDate} 
-                    className="h-auto p-0 w-full bg-transparent border-0 text-white hover:bg-transparent rounded-none"
-                 />
+                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-medium mb-1 block">Check-in</label>
+                 <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"ghost"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-auto bg-transparent hover:bg-transparent text-white shadow-none p-0 rounded-none",
+                          !date?.from && "text-muted-foreground"
+                        )}
+                      >
+                        <span className="block font-serif text-lg md:text-xl italic hover:text-orange-400 transition-colors truncate">
+                          {date?.from ? format(date.from, "MMM dd, y") : <span>Select Date</span>}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800 text-white" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={date?.from}
+                        onSelect={(newDate) => {
+                           if (!newDate) return;
+                           const newDateNormalized = newDate;
+                           newDateNormalized.setHours(0,0,0,0);
+                           
+                           // If new check-in is after existing check-out, clear check-out
+                           if (date?.to && newDateNormalized >= date.to) {
+                               setDate({ from: newDateNormalized, to: undefined });
+                           } else {
+                               setDate({ from: newDateNormalized, to: date?.to });
+                           }
+                        }}
+                        disabled={(date) => date < today}
+                        initialFocus
+                        className="p-3"
+                        classNames={{
+                            day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                            day_today: "bg-neutral-800 text-white",
+                            day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                            caption_label: "text-white font-medium",
+                            nav_button: "text-white hover:bg-neutral-800",
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+            </div>
+
+            {/* Check-out */}
+            <div className="relative hover:bg-white/5 transition-colors h-16 md:h-20 flex flex-col justify-center px-6">
+                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-medium mb-1 block">Check-out</label>
+                 <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"ghost"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-auto bg-transparent hover:bg-transparent text-white shadow-none p-0 rounded-none",
+                          !date?.to && "text-muted-foreground"
+                        )}
+                      >
+                        <span className="block font-serif text-lg md:text-xl italic hover:text-orange-400 transition-colors truncate">
+                          {date?.to ? format(date.to, "MMM dd, y") : <span>Select Date</span>}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800 text-white" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={date?.to}
+                        onSelect={(newDate) => {
+                            if (!newDate) return;
+                            const newDateNormalized = newDate;
+                            newDateNormalized.setHours(0,0,0,0);
+                            setDate({ from: date?.from, to: newDateNormalized });
+                        }}
+                        disabled={(day) => {
+                            if (!date?.from) return day < today;
+                            const nextDay = new Date(date.from);
+                            nextDay.setDate(nextDay.getDate() + 1); 
+                            return day < nextDay;
+                        }}
+                        initialFocus
+                        className="p-3"
+                        classNames={{
+                            day_selected: "bg-white text-black hover:bg-white/90 hover:text-black",
+                            day_today: "bg-neutral-800 text-white",
+                            day: "h-9 w-9 p-0 font-normal text-white hover:bg-neutral-800 rounded-md cursor-pointer",
+                            caption_label: "text-white font-medium",
+                            nav_button: "text-white hover:bg-neutral-800",
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
             </div>
 
             {/* Guests */}
@@ -169,78 +314,151 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {availability.map((room) => {
-                 const property = properties.find(p => p.id === selectedProperty);
-                 if (!property) return null;
+              {availability.length === 0 ? (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-white/70 text-lg">No rooms available for your selected dates.</p>
+                  <p className="text-white/50 text-sm mt-2">Try different dates or another property.</p>
+                </div>
+              ) : (
+                availability.map((room) => {
+                  const property = properties.find(p => p.id === selectedProperty);
+                  if (!property) return null;
 
-                 return (
-                     <div key={room.id} className="relative group/card h-full">
-                    <Link 
-                       href={`/properties/${property.slug}/rooms/${room.id}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
-                       className="block h-full"
-                    >
-                     <div className="group relative rounded-none overflow-hidden cursor-pointer h-full">
-                        <div className="aspect-[4/3]">
-                           <img src={room.image} alt={room.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  return (
+                    <div key={room.roomId} className="relative group/card h-full">
+                      <Link 
+                        href={`/properties/${property.slug}/rooms/${room.roomId}?checkIn=${date?.from?.toISOString()}&checkOut=${date?.to?.toISOString()}`} 
+                        className="block h-full"
+                      >
+                        <div className="group relative rounded-none overflow-hidden cursor-pointer h-full">
+                          <div className="aspect-[4/3]">
+                            <img src={room.roomImage} alt={room.roomName} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                          </div>
+                          {/* Limited Availability Badge */}
+                          {room.limitedAvailability && (
+                            <Badge className="absolute top-4 left-4 bg-orange-500 text-white border-0 rounded-none uppercase tracking-widest text-[10px] font-bold">
+                              Limited Availability
+                            </Badge>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-6 flex flex-col justify-end">
+                            <h4 className="font-serif text-2xl text-white mb-2">{room.roomName}</h4>
+                            {/* Available Units Count */}
+                            <p className="text-white/60 text-sm mb-2">
+                              {room.availableUnits} {room.availableUnits === 1 ? 'room' : 'rooms'} remaining
+                            </p>
+                            <div className="flex justify-between items-end gap-2">
+                              <span className="text-white/90 font-light">₱{room.price.toLocaleString()} <span className="text-xs opacity-70">/ night</span></span>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white hover:text-black rounded-none uppercase tracking-widest text-[10px] h-8 px-4 font-bold">
+                                  Details
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  className="rounded-none bg-white text-black hover:bg-neutral-200 uppercase tracking-widest text-[10px] h-8 px-4 font-bold"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    // Create flyer
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setFlyingParticle({
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top + rect.height / 2,
+                                    });
+
+                                    // Add to cart with all required details
+                                    useCartStore.getState().addToCart({
+                                      propertySlug: property.slug,
+                                      propertyName: property.name,
+                                      propertyImage: property.image,
+                                      roomId: room.roomId,
+                                      roomName: room.roomName,
+                                      roomImage: room.roomImage,
+                                      roomPrice: room.price,
+                                      checkIn: date?.from || new Date(),
+                                      checkOut: date?.to || addDays(new Date(), 1),
+                                      guests: parseInt(guests),
+                                    });
+
+                                    // Open drawer slightly after animation starts
+                                    setTimeout(() => {
+                                      useCartStore.getState().setDrawerOpen(true);
+                                      setFlyingParticle(null);
+                                    }, 800);
+                                  }}
+                                >
+                                  Select
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-6 flex flex-col justify-end">
-                           <h4 className="font-serif text-2xl text-white mb-2">{room.name}</h4>
-                           <div className="flex justify-between items-end gap-2">
-                               <span className="text-white/90 font-light">₱{room.price.toLocaleString()} <span className="text-xs opacity-70">/ night</span></span>
-                               <div className="flex gap-2">
-                                  <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white hover:text-black rounded-none uppercase tracking-widest text-[10px] h-8 px-4 font-bold">
-                                    Details
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    className="rounded-none bg-white text-black hover:bg-neutral-200 uppercase tracking-widest text-[10px] h-8 px-4 font-bold"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-
-                                      // Create flyer
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      setFlyingParticle({
-                                        x: rect.left + rect.width / 2,
-                                        y: rect.top + rect.height / 2,
-                                      });
-
-                                      // Add to cart with all required details
-                                      useCartStore.getState().addToCart({
-                                        propertySlug: property.slug,
-                                        propertyName: property.name,
-                                        propertyImage: property.image,
-                                        roomId: room.id,
-                                        roomName: room.name,
-                                        roomImage: room.image,
-                                        roomPrice: room.price,
-                                        checkIn: date?.from || new Date(),
-                                        checkOut: date?.to || addDays(new Date(), 1),
-                                        guests: parseInt(guests),
-                                      });
-
-                                      // Open drawer slightly after animation starts
-                                      setTimeout(() => {
-                                        useCartStore.getState().setDrawerOpen(true);
-                                        setFlyingParticle(null);
-                                      }, 800);
-                                    }}
-                                  >
-                                    Select
-                                  </Button>
-                               </div>
-                           </div>
-                        </div>
-                     </div>
-                   </Link>
-                   </div>
+                      </Link>
+                    </div>
                   );
-              })}
+                })
+              )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Display */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mt-1 bg-red-900/50 border border-red-500/30 p-4 text-red-200 text-center"
+          >
+            {error}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+/**
+ * Filter and map room types to only include those with available units.
+ * 
+ * This function:
+ * 1. Filters out room types with availableUnits <= 0
+ * 2. Maps room data with availability information
+ * 3. Sets limitedAvailability flag when availableUnits <= 2
+ * 
+ * @param rooms - Array of room types from the property
+ * @param availabilityResults - Array of availability results from the API
+ * @returns Array of RoomAvailability objects for rooms with available units
+ */
+export function filterAvailableRooms(
+  rooms: { id: string; name: string; image: string; price: number; capacity: number }[],
+  availabilityResults: { roomTypeId: string; availableUnits: number; totalUnits: number; limitedAvailability: boolean }[]
+): RoomAvailability[] {
+  // Create a map for quick lookup
+  const availabilityMap = new Map(
+    availabilityResults.map(result => [result.roomTypeId, result])
+  );
+
+  return rooms
+    .map(room => {
+      const availability = availabilityMap.get(room.id);
+      if (!availability || availability.availableUnits <= 0) {
+        return null;
+      }
+
+      return {
+        roomId: room.id,
+        roomName: room.name,
+        roomImage: room.image,
+        price: room.price,
+        capacity: room.capacity,
+        availableUnits: availability.availableUnits,
+        totalUnits: availability.totalUnits,
+        limitedAvailability: availability.limitedAvailability
+      };
+    })
+    .filter((room): room is RoomAvailability => room !== null);
 }
 
