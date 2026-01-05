@@ -37,10 +37,16 @@ export interface UseRoomAvailabilityResult {
 
 
 /**
- * Hook to fetch and manage room availability data for calendar display.
- * 
- * @param options - Configuration options
- * @returns Availability data including disabled dates, limited dates, and loading state
+ * Provide room-type availability mapped by date for calendar rendering and helpers to refresh it.
+ *
+ * @param options - Configuration for the hook. `roomTypeId` selects which room type to load; if omitted the hook clears data and does not fetch. `visibleMonth` sets the first month to fetch (defaults to the current month). `numberOfMonths` controls how many consecutive months to load starting from `visibleMonth` (defaults to 2).
+ * @returns An object containing:
+ *   - `disabledDates`: dates whose availability status is `'unavailable'`,
+ *   - `limitedDates`: dates whose availability status is `'limited'`,
+ *   - `availabilityMap`: a Map keyed by `yyyy-MM-dd` to `DateAvailabilityInfo` for each fetched day,
+ *   - `loading`: whether a fetch is in progress,
+ *   - `error`: an error message or `null`,
+ *   - `refetch`: a function to manually trigger a reload.
  */
 export function useRoomAvailability(
   options: UseRoomAvailabilityOptions
