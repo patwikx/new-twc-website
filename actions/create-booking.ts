@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { nanoid } from "nanoid";
-import { checkRoomAvailability } from "@/lib/booking/availability";
+import { checkUnitAvailabilityInTransaction, TransactionalAvailabilityCheck } from "@/lib/booking/availability";
 import { generateVerificationToken } from "@/lib/booking/verification-token";
 
 interface CartItem {
@@ -34,6 +34,7 @@ type CreateBookingResult =
   | {
       success: false;
       error: string;
+      code?: 'AVAILABILITY_CHANGED' | 'ROOM_UNAVAILABLE' | 'VALIDATION_ERROR';
     };
 
 export async function createBooking(
@@ -43,11 +44,11 @@ export async function createBooking(
   try {
     // Validate inputs
     if (!cartItems || cartItems.length === 0) {
-      return { success: false, error: "Cart is empty" };
+      return { success: false, error: "Cart is empty", code: 'VALIDATION_ERROR' };
     }
 
     if (!guestDetails.firstName || !guestDetails.lastName || !guestDetails.email || !guestDetails.phone) {
-      return { success: false, error: "Please fill in all required guest details" };
+      return { success: false, error: "Please fill in all required guest details", code: 'VALIDATION_ERROR' };
     }
 
     // Get current user (optional - guest checkout allowed)
@@ -62,38 +63,13 @@ export async function createBooking(
     });
 
     if (rooms.length !== roomIds.length) {
-      return { success: false, error: "Some rooms are no longer available" };
+      return { success: false, error: "Some rooms are no longer available", code: 'ROOM_UNAVAILABLE' };
     }
 
     // Create room lookup map
     const roomMap = new Map(rooms.map(room => [room.id, room]));
 
-    // Check room availability before proceeding
-    const availabilityChecks = cartItems.map(item => ({
-      roomId: item.roomId,
-      checkIn: new Date(item.checkIn),
-      checkOut: new Date(item.checkOut)
-    }));
-    
-    const availabilityResults = await checkRoomAvailability(availabilityChecks);
-    
-    // Check if any rooms are unavailable
-    const unavailableRooms: string[] = [];
-    for (const [roomId, result] of availabilityResults) {
-      if (!result.available) {
-        const room = roomMap.get(roomId);
-        unavailableRooms.push(room?.name || roomId);
-      }
-    }
-    
-    if (unavailableRooms.length > 0) {
-      return { 
-        success: false, 
-        error: `The following room(s) are not available for the selected dates: ${unavailableRooms.join(', ')}. Please choose different dates.` 
-      };
-    }
-
-    // Calculate totals
+    // Calculate totals before transaction
     let subtotal = 0;
     const bookingItems: {
       roomId: string;
@@ -113,7 +89,7 @@ export async function createBooking(
       const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
       
       if (nights <= 0) {
-        return { success: false, error: "Invalid check-in/check-out dates" };
+        return { success: false, error: "Invalid check-in/check-out dates", code: 'VALIDATION_ERROR' };
       }
 
       const pricePerNight = Number(room.price);
@@ -144,52 +120,94 @@ export async function createBooking(
     // Get first room's property for reference
     const firstRoom = roomMap.get(cartItems[0].roomId);
 
-    // Create booking with items in transaction
-    const booking = await db.booking.create({
-      data: {
-        shortRef,
-        userId,
-        guestFirstName: guestDetails.firstName,
-        guestLastName: guestDetails.lastName,
-        guestEmail: guestDetails.email,
-        guestPhone: guestDetails.phone,
-        specialRequests: guestDetails.specialRequests,
-        totalAmount,
-        taxAmount,
-        serviceCharge,
-        amountPaid: 0,
-        amountDue: totalAmount,
-        currency: "PHP",
-        status: "PENDING",
-        paymentStatus: "UNPAID",
-        propertyId: firstRoom?.propertyId,
-        items: {
-          create: bookingItems.map(item => ({
-            roomId: item.roomId,
-            checkIn: item.checkIn,
-            checkOut: item.checkOut,
-            guests: item.guests,
-            pricePerNight: item.pricePerNight
-          }))
+    // Prepare availability checks for transaction
+    const availabilityChecks: TransactionalAvailabilityCheck[] = cartItems.map(item => ({
+      roomTypeId: item.roomId,
+      checkIn: new Date(item.checkIn),
+      checkOut: new Date(item.checkOut)
+    }));
+
+    // Create booking with transactional availability check
+    // This ensures atomicity and prevents race conditions (Property 6)
+    const result = await db.$transaction(async (tx) => {
+      // Re-check availability within transaction before creating booking
+      // This is the final availability check that prevents overselling
+      const availabilityResults = await checkUnitAvailabilityInTransaction(tx, availabilityChecks);
+      
+      // Check if any rooms are unavailable
+      const unavailableRooms: string[] = [];
+      for (const [roomId, availability] of availabilityResults) {
+        if (!availability.available) {
+          const room = roomMap.get(roomId);
+          unavailableRooms.push(room?.name || roomId);
         }
       }
+      
+      if (unavailableRooms.length > 0) {
+        // Availability changed since initial check - throw to rollback transaction
+        throw new Error(`AVAILABILITY_CHANGED:${unavailableRooms.join(', ')}`);
+      }
+
+      // Create booking with items
+      const booking = await tx.booking.create({
+        data: {
+          shortRef,
+          userId,
+          guestFirstName: guestDetails.firstName,
+          guestLastName: guestDetails.lastName,
+          guestEmail: guestDetails.email,
+          guestPhone: guestDetails.phone,
+          specialRequests: guestDetails.specialRequests,
+          totalAmount,
+          taxAmount,
+          serviceCharge,
+          amountPaid: 0,
+          amountDue: totalAmount,
+          currency: "PHP",
+          status: "PENDING",
+          paymentStatus: "UNPAID",
+          propertyId: firstRoom?.propertyId,
+          items: {
+            create: bookingItems.map(item => ({
+              roomId: item.roomId,
+              checkIn: item.checkIn,
+              checkOut: item.checkOut,
+              guests: item.guests,
+              pricePerNight: item.pricePerNight
+            }))
+          }
+        }
+      });
+
+      return booking;
     });
 
-    // Generate verification token for guest checkout
+    // Generate verification token for guest checkout (outside transaction)
     const { token: verificationToken, expiresAt: tokenExpiresAt } = 
-      await generateVerificationToken(booking.id);
+      await generateVerificationToken(result.id);
 
     return {
       success: true,
-      bookingId: booking.id,
-      shortRef: booking.shortRef,
+      bookingId: result.id,
+      shortRef: result.shortRef,
       totalAmount: Number(totalAmount),
       verificationToken,
       tokenExpiresAt
     };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating booking:", error);
+    
+    // Check if this is an availability changed error
+    if (error.message?.startsWith('AVAILABILITY_CHANGED:')) {
+      const roomNames = error.message.replace('AVAILABILITY_CHANGED:', '');
+      return { 
+        success: false, 
+        error: `Sorry, the following room(s) were just booked: ${roomNames}. Please select different dates or room types.`,
+        code: 'AVAILABILITY_CHANGED'
+      };
+    }
+    
     return { success: false, error: "Failed to create booking. Please try again." };
   }
 }
