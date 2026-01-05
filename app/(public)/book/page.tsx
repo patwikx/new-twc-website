@@ -48,6 +48,15 @@ interface CartItemAvailability {
 }
 
 
+/**
+ * Renders the booking checkout UI and manages the end-to-end booking flow for cart and single-room modes.
+ *
+ * The component displays guest details, editable stay items (dates, guests), add-ons, promo code handling, and a price breakdown.
+ * It validates availability via the bulk availability API, computes subtotals, discounts, taxes, and service charges, creates bookings,
+ * initiates a PayMongo checkout session, and polls booking/payment status to redirect to a confirmation page.
+ *
+ * @returns The BookingForm React element that includes the booking form, summary, availability indicators, and payment submission controls.
+ */
 function BookingForm() {
    const router = useRouter();
    const searchParams = useSearchParams();
