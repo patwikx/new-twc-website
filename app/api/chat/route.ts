@@ -2,30 +2,12 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkLimit } from "@/lib/rate-limit";
+import { getClientIP } from "@/lib/client-ip";
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
-
-/**
- * Extract client IP from request headers
- * Checks x-forwarded-for and x-real-ip headers
- */
-function getClientIP(request: Request): string {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    // x-forwarded-for can contain multiple IPs, take the first one
-    return forwardedFor.split(',')[0].trim();
-  }
-  
-  const realIP = request.headers.get('x-real-ip');
-  if (realIP) {
-    return realIP.trim();
-  }
-  
-  return 'unknown';
-}
 
 export async function POST(req: Request) {
   try {

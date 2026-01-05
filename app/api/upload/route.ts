@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
       // Only allow admin users to upload files
       if (session.user.role !== 'ADMIN') {
         return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
+          { error: 'Forbidden' },
+          { status: 403 }
         );
       }
       

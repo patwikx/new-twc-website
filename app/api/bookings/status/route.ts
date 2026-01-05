@@ -3,25 +3,7 @@ import { db } from "@/lib/db";
 import { getCheckoutSession } from "@/lib/paymongo";
 import { sendBookingConfirmationEmail } from "@/lib/mail";
 import { checkLimit } from "@/lib/rate-limit";
-
-/**
- * Extract client IP from request headers
- * Checks x-forwarded-for and x-real-ip headers
- */
-function getClientIP(request: Request): string {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    // x-forwarded-for can contain multiple IPs, take the first one
-    return forwardedFor.split(',')[0].trim();
-  }
-  
-  const realIP = request.headers.get('x-real-ip');
-  if (realIP) {
-    return realIP.trim();
-  }
-  
-  return 'unknown';
-}
+import { getClientIP } from "@/lib/client-ip";
 
 export async function GET(request: Request) {
   try {

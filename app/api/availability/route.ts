@@ -10,6 +10,8 @@
 
 import { NextResponse } from "next/server";
 import { checkUnitAvailability, UnitAvailabilityResult } from "@/lib/booking/availability";
+import { checkLimit } from "@/lib/rate-limit";
+import { getClientIP } from "@/lib/client-ip";
 
 /**
  * Handles GET requests to check availability for a single room type within a date range.
@@ -18,6 +20,24 @@ import { checkUnitAvailability, UnitAvailabilityResult } from "@/lib/booking/ava
  */
 export async function GET(request: Request) {
   try {
+    // Rate limiting check - 30 requests per 60 seconds
+    const clientIP = getClientIP(request);
+    const rateLimitResult = await checkLimit(clientIP, {
+      limit: 30,
+      windowMs: 60 * 1000,
+      keyPrefix: 'availability'
+    });
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Too many requests. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const roomTypeId = searchParams.get("roomTypeId");
     const checkInParam = searchParams.get("checkIn");
