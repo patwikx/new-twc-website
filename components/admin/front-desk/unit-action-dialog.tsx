@@ -132,14 +132,32 @@ export function UnitActionDialog({
     else setActiveTab("check-in");
   }, [unit]);
 
+  // Reset state when unit changes or dialog closes
+  React.useEffect(() => {
+    setActiveBooking(null);
+    setFolioLoading(false);
+    // Reset other temporary states if needed
+    setChargeAmount("");
+    setPayAmount("");
+  }, [unit?.id, isOpen]);
+
   // Fetch active booking data when opening "Manage" tab
   React.useEffect(() => {
+    // Only fetch if we don't already have the CORRECT booking loaded (to prevent loop if we set it)
+    // Actually, just checking activeBooking is null is enough if we reset it above.
     if (activeTab === "manage" && unit?.status === 'OCCUPIED' && unit?.bookingItems?.length > 0) {
       const activeItem = unit.bookingItems[0];
       if (activeItem?.bookingId) {
         setFolioLoading(true);
+        // Clear previous booking immediately to avoid flash of old data
+        setActiveBooking(null); 
+        
         getBookingFinancials(activeItem.bookingId)
           .then(data => setActiveBooking(data))
+          .catch(e => {
+             console.error("Failed to load folio:", e);
+             toast.error("Failed to load booking details");
+          })
           .finally(() => setFolioLoading(false));
       }
     }

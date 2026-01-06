@@ -20,7 +20,7 @@ export async function getFrontDeskData(propertyId: string) {
           // Get current active usage for this unit
           bookingItems: {
             where: {
-              booking: { status: { in: ["CONFIRMED", "PENDING"] } },
+              booking: { status: { in: ["CONFIRMED", "PENDING", "CHECKED_IN"] } },
               checkIn: {
                 lte: new Date(new Date().setHours(23, 59, 59, 999)),
               },
