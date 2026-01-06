@@ -730,20 +730,34 @@ export async function checkOutUnit(bookingId: string, unitId: string) {
   if (!session?.user) throw new Error("Unauthorized");
 
   await db.$transaction(async (tx) => {
-    // 1. Truncate Booking Dates (Release availability immediately)
+    // 1. Truncate Booking Dates for specific item (Release availability)
+    // We update all items in this booking for this unit (usually one)
     await tx.bookingItem.updateMany({
-      where: { bookingId },
+      where: { bookingId, roomUnitId: unitId },
       data: { checkOut: new Date() }
     });
 
-    // 2. Mark Booking as Completed
-    await tx.booking.update({
-      where: { id: bookingId },
-      data: {
-        status: "COMPLETED",
-        updatedById: session.user.id,
-      },
+    // 2. Check if any active items remain
+    // "Active" means items that haven't passed checkout or aren't marked as such.
+    // Since we just truncated the date for the item, we can check for items 
+    // where checkOut > now.
+    const remainingItems = await tx.bookingItem.count({
+      where: { 
+        bookingId, 
+        checkOut: { gt: new Date() } 
+      }
     });
+
+    // Only mark booking as COMPLETED if no active items remain
+    if (remainingItems === 0) {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: "COMPLETED",
+          updatedById: session.user.id,
+        },
+      });
+    }
 
     // 3. Mark Unit as Dirty
     await tx.roomUnit.update({

@@ -7,6 +7,12 @@ async function main() {
     const roomType = await prisma.room.findFirst({
       where: { name: "Executive Suite" },
     });
+    
+    if (!roomType) {
+       console.log("Room Type not found");
+       return;
+    }
+
     const blockingStatuses = ['CONFIRMED', 'PENDING', 'CHECKED_IN'];
     
     const bookings = await prisma.bookingItem.findMany({

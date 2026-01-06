@@ -6,6 +6,12 @@ async function main() {
   try {
     const roomTypeName = "Executive Suite";
     const roomType = await prisma.room.findFirst({where: {name: roomTypeName}});
+    
+    if (!roomType) {
+       console.log("RT Not found");
+       return;
+    }
+    
     const propertyId = roomType.propertyId;
 
     const month = new Date("2026-01-01T00:00:00.000Z");
