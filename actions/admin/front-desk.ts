@@ -69,6 +69,9 @@ export async function getFrontDeskData(propertyId: string) {
 }
 
 export async function getDashboardStats(propertyId: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);

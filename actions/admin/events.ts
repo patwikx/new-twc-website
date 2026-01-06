@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { BookingStatus, EventStatus } from "@prisma/client";
+import { auth } from "@/auth";
 
 // --- Types ---
 
@@ -22,6 +23,9 @@ export interface CreateEventParams {
 // --- Actions ---
 
 export async function getRoomTypesWithUnits(propertyId: string, startDate: Date, endDate: Date) {
+    const session = await auth();
+    if (!session?.user) throw new Error("Unauthorized");
+
     try {
         // Fetch all room types and their units
         // We use bookingItems to check for availability
@@ -72,6 +76,9 @@ export async function getRoomTypesWithUnits(propertyId: string, startDate: Date,
 }
 
 export async function getMenuItems(propertyId: string) {
+    const session = await auth();
+    if (!session?.user) throw new Error("Unauthorized");
+
     try {
         const items = await db.menuItem.findMany({
             where: { propertyId, isAvailable: true },
