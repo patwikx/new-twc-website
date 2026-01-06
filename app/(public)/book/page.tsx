@@ -312,12 +312,17 @@ function BookingForm() {
 
    // Calculations
    const cartSubtotal = cartItems.reduce((acc, item) => {
-      const nights = Math.max(1, differenceInDays(item.checkOut, item.checkIn));
+      const checkInDate = new Date(item.checkIn);
+      const checkOutDate = new Date(item.checkOut);
+      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+      const nights = Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
       // Use roomPrice from cart item (embedded data)
       return acc + ((item.roomPrice || 0) * nights);
    }, 0);
 
-   const singleNights = date?.from && date?.to ? Math.max(1, differenceInDays(date.to, date.from)) : 1;
+   const singleNights = date?.from && date?.to 
+      ? Math.max(1, Math.ceil((date.to.getTime() - date.from.getTime()) / (24 * 60 * 60 * 1000))) 
+      : 1;
    const singleRoomTotal = singleRoomPrice * singleNights; // Using embedded or fetched price
 
    const roomSubtotal = isCartMode ? cartSubtotal : singleRoomTotal;
@@ -336,7 +341,8 @@ function BookingForm() {
 
    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
    const serviceCharge = discountedSubtotal * config.serviceChargeRate;
-   const taxes = discountedSubtotal * config.taxRate;
+   // Backend calculates tax on (Base + Service Charge)
+   const taxes = (discountedSubtotal + serviceCharge) * config.taxRate;
    const total = discountedSubtotal + taxes + serviceCharge;
 
    // Polling for booking status (placed after all dependencies are declared)
