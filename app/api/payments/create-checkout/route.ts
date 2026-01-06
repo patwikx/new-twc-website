@@ -173,20 +173,20 @@ export async function POST(req: NextRequest) {
       lineItems: [
         {
           name: description,
-          amount: Number(booking.totalAmount) / 1.22, // Approximate base (Back-calculate)
+          amount: Number(booking.totalAmount) - Number(booking.serviceCharge) - Number(booking.taxAmount), 
           currency: "PHP",
           quantity: 1,
           description: "Room Charges"
         },
         {
           name: "Service Charge (10%)",
-          amount: (Number(booking.totalAmount) / 1.22) * 0.10,
+          amount: Number(booking.serviceCharge),
           currency: "PHP",
           quantity: 1
         },
         {
           name: "VAT (12%)",
-          amount: (Number(booking.totalAmount) / 1.22) * 1.10 * 0.12, 
+          amount: Number(booking.taxAmount), 
           currency: "PHP",
           quantity: 1
         }
