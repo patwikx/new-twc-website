@@ -560,6 +560,19 @@ export function UnitActionDialog({
 
            {/* --- TAB: CHECK IN --- */}
            <TabsContent value="check-in" className="space-y-4 pt-4">
+              {unit.status !== 'CLEAN' && (
+                  <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg flex items-center gap-3 mb-4">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                      <div>
+                          <p className="text-red-400 font-medium">Unit is not Clean</p>
+                          <p className="text-red-400/80 text-xs">This unit must be marked as CLEAN before checking in guests.</p>
+                      </div>
+                      <Button size="sm" variant="outline" className="ml-auto border-red-500/20 text-red-400 hover:bg-red-500/10" onClick={() => setActiveTab("housekeeping")}>
+                          Go to Status
+                      </Button>
+                  </div>
+              )}
+
               {/* 1. Unit Arrivals (Confirmed bookings assigned to this unit) */}
               {unit.bookingItems && unit.bookingItems.filter((b: any) => b.booking.status === 'CONFIRMED').length > 0 && (
                   <div className="space-y-2 mb-6">

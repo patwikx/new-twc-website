@@ -142,7 +142,7 @@ export async function getCalendarData(propertyId: string, month: Date) {
   const bookings = await db.bookingItem.findMany({
       where: {
           room: { propertyId },
-          booking: { status: { in: ['CONFIRMED', 'PENDING'] } },
+          booking: { status: { in: ['CONFIRMED', 'PENDING', 'CHECKED_IN'] } },
           OR: [
               { checkIn: { lte: endOfMonth }, checkOut: { gte: startOfMonth } }
           ]
@@ -200,11 +200,16 @@ export async function getCalendarData(propertyId: string, month: Date) {
       const activeBookings = bookings.filter(b => {
           const bStart = new Date(b.checkIn);
           const bEnd = new Date(b.checkOut);
-          bStart.setHours(0,0,0,0);
-          bEnd.setHours(0,0,0,0);
           const current = new Date(iter);
-          current.setHours(0,0,0,0);
-          return current >= bStart && current < bEnd; 
+          
+          // Use standard time overlap logic: start1 < end2 && end1 > start2
+          // Check for time overlap with the current day (dayStart to dayEnd)
+          // Also handle same-day events (bStart == bEnd) by checking if they fall within the day
+          if (bStart.getTime() === bEnd.getTime()) {
+             return bStart >= dayStart && bStart < dayEnd;
+          }
+
+          return bStart < dayEnd && bEnd > dayStart; 
       }).map(b => ({
           id: b.id,
           guestName: `${b.booking.guestFirstName} ${b.booking.guestLastName}`,
@@ -374,20 +379,27 @@ export async function checkInBooking(
   if (!session?.user) throw new Error("Unauthorized");
 
   await db.$transaction(async (tx) => {
-    // 1. Link Unit to Booking Item
+    // 1. Validate Unit Status (Inside Transaction to prevent Race Conditions)
+    const unit = await tx.roomUnit.findUnique({ where: { id: unitId } });
+    if (!unit) throw new Error("Unit not found");
+    if (unit.status !== "CLEAN") {
+      throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN to check in.`);
+    }
+
+    // 2. Link Unit to Booking Item
     const bookingItem = await tx.bookingItem.update({
       where: { id: bookingItemId },
       data: { roomUnitId: unitId },
       include: { booking: true }
     });
 
-    // 2. Update Unit Status to OCCUPIED
+    // 3. Update Unit Status to OCCUPIED
     await tx.roomUnit.update({
       where: { id: unitId },
       data: { status: "OCCUPIED" },
     });
 
-    // 3. Update Booking Status to CHECKED_IN
+    // 4. Update Booking Status to CHECKED_IN
     await tx.booking.update({
         where: { id: bookingItem.bookingId },
         data: { status: "CHECKED_IN" }
@@ -491,6 +503,12 @@ export async function createWalkIn(data: {
   const lastName = data.guestName.split(" ").slice(1).join(" ") || "Guest";
 
   const result = await db.$transaction(async (tx) => {
+      // 1. Validate Unit Status (Inside Transaction)
+      const unit = await tx.roomUnit.findUnique({ where: { id: data.unitId } });
+      if (!unit) throw new Error("Unit not found");
+      if (unit.status !== "CLEAN") {
+         throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN for walk-ins.`);
+      }
       // 1. Create/Update User
       let userId = null;
       if (data.guestEmail) {
@@ -710,17 +728,41 @@ export async function checkOutUnit(bookingId: string, unitId: string) {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  await db.booking.update({
-    where: { id: bookingId },
-    data: {
-      status: "COMPLETED",
-      updatedById: session.user.id,
-    },
-  });
+  await db.$transaction(async (tx) => {
+    // 1. Truncate Booking Dates for specific item (Release availability)
+    // We update all items in this booking for this unit (usually one)
+    await tx.bookingItem.updateMany({
+      where: { bookingId, roomUnitId: unitId },
+      data: { checkOut: new Date() }
+    });
 
-  await db.roomUnit.update({
-    where: { id: unitId },
-    data: { status: "DIRTY" },
+    // 2. Check if any active items remain
+    // "Active" means items that haven't passed checkout or aren't marked as such.
+    // Since we just truncated the date for the item, we can check for items 
+    // where checkOut > now.
+    const remainingItems = await tx.bookingItem.count({
+      where: { 
+        bookingId, 
+        checkOut: { gt: new Date() } 
+      }
+    });
+
+    // Only mark booking as COMPLETED if no active items remain
+    if (remainingItems === 0) {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: "COMPLETED",
+          updatedById: session.user.id,
+        },
+      });
+    }
+
+    // 3. Mark Unit as Dirty
+    await tx.roomUnit.update({
+      where: { id: unitId },
+      data: { status: "DIRTY" },
+    });
   });
 
   revalidatePath("/admin/front-desk");
