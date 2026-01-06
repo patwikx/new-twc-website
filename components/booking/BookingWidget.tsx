@@ -65,13 +65,13 @@ interface RoomAvailability {
  * @returns The booking widget UI as JSX.
  */
 export function BookingWidget({ properties }: BookingWidgetProps) {
-  // Normalize today to midnight to avoid time comparison issues
+  // Normalize today to avoid time comparison issues (used for defaults)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const [date, setDate] = useState<DateRange | undefined>({
-    from: today,
-    to: addDays(today, 3),
+    from: new Date(new Date().setHours(14,0,0,0)), // Default 2 PM
+    to: addDays(new Date().setHours(12,0,0,0), 3), // Default 12 PM (+3 days)
   });
   const [selectedProperty, setSelectedProperty] = useState<string>("");
   const [guests, setGuests] = useState("2");
@@ -194,7 +194,8 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
                         onSelect={(newDate) => {
                            if (!newDate) return;
                            const newDateNormalized = newDate;
-                           newDateNormalized.setHours(0,0,0,0);
+                           // Set Check-in to 2:00 PM (14:00) to prevent UTC back-shift
+                           newDateNormalized.setHours(14,0,0,0); 
                            
                            // If new check-in is after existing check-out, clear check-out
                            if (date?.to && newDateNormalized >= date.to) {
@@ -203,7 +204,7 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
                                setDate({ from: newDateNormalized, to: date?.to });
                            }
                         }}
-                        disabled={(date) => date < today}
+                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                         initialFocus
                         className="p-3"
                         classNames={{
@@ -242,13 +243,16 @@ export function BookingWidget({ properties }: BookingWidgetProps) {
                         onSelect={(newDate) => {
                             if (!newDate) return;
                             const newDateNormalized = newDate;
-                            newDateNormalized.setHours(0,0,0,0);
+                            // Set Check-out to 12:00 PM (12:00) to prevent UTC back-shift
+                            newDateNormalized.setHours(12,0,0,0);
                             setDate({ from: date?.from, to: newDateNormalized });
                         }}
                         disabled={(day) => {
-                            if (!date?.from) return day < today;
+                            if (!date?.from) return day < new Date(new Date().setHours(0,0,0,0)); // Fallback
                             const nextDay = new Date(date.from);
                             nextDay.setDate(nextDay.getDate() + 1); 
+                            // Ensure nextDay comparators are clean
+                            nextDay.setHours(0,0,0,0);
                             return day < nextDay;
                         }}
                         initialFocus
