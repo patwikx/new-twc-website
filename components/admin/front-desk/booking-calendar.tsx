@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { AddEventDialog } from "@/components/admin/calendar/add-event-dialog";
 import { EventDetailsDialog } from "@/components/admin/calendar/event-details-dialog";
 
-// ... existing imports
+
 
 interface CalendarEvent {
     id: string;
@@ -97,7 +97,7 @@ export function BookingCalendar({ days, events, currentDate, onMonthChange, isLo
 
   return (
     <div className="border border-white/10 rounded-xl bg-neutral-900/50 backdrop-blur mb-8 overflow-hidden">
-      {/* ... header */}
+
       
       {/* Event Details Dialog */}
       <EventDetailsDialog 
@@ -107,7 +107,6 @@ export function BookingCalendar({ days, events, currentDate, onMonthChange, isLo
       />
 
       <div className="flex items-center justify-between p-4 bg-neutral-900/50">
-          {/* ... existing header content */}
           <div className="flex items-center gap-4">
               {isLoading && <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />}
               {propertyId && (

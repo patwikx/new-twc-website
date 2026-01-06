@@ -43,7 +43,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { createEvent, getRoomTypesWithUnits, getMenuItems } from "@/actions/admin/events";
+import { createEvent } from "@/actions/admin/front-desk";
+import { getRoomTypesWithUnits, getMenuItems } from "@/actions/admin/events";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -108,20 +109,39 @@ export function AddEventDialog({ propertyId, trigger, open, onOpenChange }: AddE
       if (onOpenChange) onOpenChange(isOpen);
   }, [isOpen, onOpenChange]);
 
-  // Fetch Data on Open
+  const dateRange = form.watch("dateRange");
+
+  // Fetch Menu Items on Open
   useEffect(() => {
       if (isOpen) {
-          setLoadingData(true);
-          Promise.all([
-              getRoomTypesWithUnits(propertyId),
-              getMenuItems(propertyId)
-          ]).then(([rts, items]) => {
-              setRoomTypes(rts);
-              setMenuItems(items);
-              if (rts.length > 0) setSelectedRoomTypeId(rts[0].id);
-          }).finally(() => setLoadingData(false));
+          // Load Menu Items (independent of dates)
+          getMenuItems(propertyId).then(setMenuItems);
       }
   }, [isOpen, propertyId]);
+
+  // Fetch Room Types when Dates Change (and dialog is open)
+  useEffect(() => {
+      if (isOpen && dateRange?.from) {
+          setLoadingData(true);
+          const start = dateRange.from;
+          const end = dateRange.to || dateRange.from;
+          
+          getRoomTypesWithUnits(propertyId, start, end)
+              .then((rts) => {
+                  setRoomTypes(rts);
+                  // Auto-select first room type if none selected or not in list
+                  if (rts.length > 0 && (!selectedRoomTypeId || !rts.find(r => r.id === selectedRoomTypeId))) {
+                      setSelectedRoomTypeId(rts[0].id);
+                  }
+              })
+              .finally(() => setLoadingData(false));
+      } else if (isOpen) {
+          // If open but no dates, maybe clear room types or just do nothing?
+          // User said "skip calling... until populated". 
+          // We can leave explicit empty or previous state.
+          // Optional: setRoomTypes([]);
+      }
+  }, [isOpen, propertyId, dateRange?.from, dateRange?.to]);
 
   function onSubmit(values: FormValues) {
     if (!values.dateRange.from) return; 

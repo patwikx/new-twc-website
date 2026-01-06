@@ -74,17 +74,10 @@ export async function getDashboardStats(propertyId: string) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  // 1. Arrivals (Confirmed check-ins today or past unassigned)
-  const arrivalsCount = await db.bookingItem.count({
-    where: {
-      room: { propertyId },
-      booking: { status: "CONFIRMED" },
-      roomUnitId: null, // "Arrival" usually implies not yet in room? Or checking in today.
-      // Actually, if we use the same logic as unassignedBookings:
-    }
-  });
-  
-  // Let's match the "Arrivals" card to "Unassigned Bookings" logic essentially,
+    // 1. Arrivals (Confirmed check-ins today or past unassigned)
+    // Removed unused arrivalsCount logic
+      
+    // Let's match the "Arrivals" card to "Unassigned Bookings" logic essentially,
   // PLUS assigned bookings checking in today that aren't yet "Occupied" (if such state exists separately).
   // For simplicity V1: Arrivals = Unassigned Confirmed Bookings.
   // We can refine. "Arrivals" usually means strictly CheckIn Date = Today.
@@ -237,18 +230,65 @@ export async function createEvent(data: {
     guestCount?: number;
     menuDetails?: string;
     status: 'TENTATIVE' | 'CONFIRMED';
+    blockedUnitIds?: string[];
 }) {
     const session = await auth();
     if(!session?.user) throw new Error("Unauthorized");
 
-    const event = await db.event.create({
-        data: {
-            ...data,
-            createdById: session.user.id
+    const event = await db.$transaction(async (tx) => {
+        // 1. Create Event
+        // Destructure to separate event data from non-model fields
+        const { blockedUnitIds, ...eventData } = data;
+        const newEvent = await tx.event.create({
+            data: {
+                ...eventData,
+                createdById: session.user.id
+            }
+        });
+
+        // 2. Block Units (Create Bookings)
+        if (blockedUnitIds && blockedUnitIds.length > 0) {
+             const units = await tx.roomUnit.findMany({
+                 where: { id: { in: blockedUnitIds } },
+                 include: { roomType: true }
+             });
+
+             for (const unit of units) {
+                 await tx.booking.create({
+                     data: {
+                         propertyId: data.propertyId,
+                         eventId: newEvent.id,
+                         status: "CONFIRMED",
+                         shortRef: Math.random().toString(36).substring(2, 10).toUpperCase(),
+                         guestFirstName: "Event",
+                         guestLastName: data.title,
+                         guestEmail: "events@internal", // System placeholder
+                         guestPhone: "N/A", // Required placeholder
+                         totalAmount: 0,
+                         taxAmount: 0,
+                         serviceCharge: 0,
+                         amountDue: 0,
+                         createdById: session.user.id,
+                         items: {
+                             create: {
+                                 roomId: unit.roomTypeId,
+                                 roomUnitId: unit.id,
+                                 checkIn: data.startDate,
+                                 checkOut: data.endDate,
+                                 guests: 0, 
+                                 pricePerNight: 0
+                             }
+                         }
+                     }
+                 });
+             }
         }
+
+        return newEvent;
     });
 
     revalidatePath("/admin/calendar");
+    revalidatePath("/admin/front-desk");
     return { success: true, event };
 }
 
@@ -322,6 +362,12 @@ export async function checkInBooking(
     await tx.roomUnit.update({
       where: { id: unitId },
       data: { status: "OCCUPIED" },
+    });
+
+    // 3. Update Booking Status to CHECKED_IN
+    await tx.booking.update({
+        where: { id: bookingItem.bookingId },
+        data: { status: "CHECKED_IN" }
     });
 
     // 3. Update Guest Details & ID Scans
