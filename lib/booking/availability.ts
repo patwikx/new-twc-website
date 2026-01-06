@@ -73,7 +73,7 @@ export async function checkRoomAvailability(
         roomId: check.roomId,
         booking: {
           status: {
-            in: ['CONFIRMED', 'PENDING']
+            in: ['CONFIRMED', 'PENDING', 'CHECKED_IN']
           }
         },
         // Date overlap: checkIn < existingCheckOut AND checkOut > existingCheckIn
@@ -194,7 +194,7 @@ export async function checkUnitAvailability(
         roomId: check.roomTypeId,
         booking: {
           status: {
-            in: ['CONFIRMED', 'PENDING']
+            in: ['CONFIRMED', 'PENDING', 'CHECKED_IN']
           }
         },
         // Date overlap: checkIn < requestedCheckOut AND checkOut > requestedCheckIn
@@ -288,7 +288,7 @@ export async function getDateRangeAvailability(
       roomId: roomTypeId,
       booking: {
         status: {
-          in: ['CONFIRMED', 'PENDING']
+          in: ['CONFIRMED', 'PENDING', 'CHECKED_IN']
         }
       },
       AND: [
@@ -533,7 +533,7 @@ export async function checkUnitAvailabilityInTransaction(
         roomId: check.roomTypeId,
         booking: {
           status: {
-            in: ['CONFIRMED', 'PENDING']
+            in: ['CONFIRMED', 'PENDING', 'CHECKED_IN']
           }
         },
         // Date overlap: checkIn < requestedCheckOut AND checkOut > requestedCheckIn

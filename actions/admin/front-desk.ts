@@ -142,7 +142,7 @@ export async function getCalendarData(propertyId: string, month: Date) {
   const bookings = await db.bookingItem.findMany({
       where: {
           room: { propertyId },
-          booking: { status: { in: ['CONFIRMED', 'PENDING'] } },
+          booking: { status: { in: ['CONFIRMED', 'PENDING', 'CHECKED_IN'] } },
           OR: [
               { checkIn: { lte: endOfMonth }, checkOut: { gte: startOfMonth } }
           ]
@@ -200,11 +200,16 @@ export async function getCalendarData(propertyId: string, month: Date) {
       const activeBookings = bookings.filter(b => {
           const bStart = new Date(b.checkIn);
           const bEnd = new Date(b.checkOut);
-          bStart.setHours(0,0,0,0);
-          bEnd.setHours(0,0,0,0);
           const current = new Date(iter);
-          current.setHours(0,0,0,0);
-          return current >= bStart && current < bEnd; 
+          
+          // Use standard time overlap logic: start1 < end2 && end1 > start2
+          // Check for time overlap with the current day (dayStart to dayEnd)
+          // Also handle same-day events (bStart == bEnd) by checking if they fall within the day
+          if (bStart.getTime() === bEnd.getTime()) {
+             return bStart >= dayStart && bStart < dayEnd;
+          }
+
+          return bStart < dayEnd && bEnd > dayStart; 
       }).map(b => ({
           id: b.id,
           guestName: `${b.booking.guestFirstName} ${b.booking.guestLastName}`,
@@ -373,6 +378,13 @@ export async function checkInBooking(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
+  // Validate Unit Status First
+  const unit = await db.roomUnit.findUnique({ where: { id: unitId } });
+  if (!unit) throw new Error("Unit not found");
+  if (unit.status !== "CLEAN") {
+    throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN to check in.`);
+  }
+
   await db.$transaction(async (tx) => {
     // 1. Link Unit to Booking Item
     const bookingItem = await tx.bookingItem.update({
@@ -486,6 +498,13 @@ export async function createWalkIn(data: {
   const serviceRate = property?.serviceChargeRate
     ? Number(property.serviceChargeRate)
     : 0;
+
+  // Validate Unit Status
+  const unit = await db.roomUnit.findUnique({ where: { id: data.unitId } });
+  if (!unit) throw new Error("Unit not found");
+  if (unit.status !== "CLEAN") {
+     throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN for walk-ins.`);
+  }
 
   const firstName = data.guestName.split(" ")[0];
   const lastName = data.guestName.split(" ").slice(1).join(" ") || "Guest";
@@ -710,17 +729,27 @@ export async function checkOutUnit(bookingId: string, unitId: string) {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  await db.booking.update({
-    where: { id: bookingId },
-    data: {
-      status: "COMPLETED",
-      updatedById: session.user.id,
-    },
-  });
+  await db.$transaction(async (tx) => {
+    // 1. Truncate Booking Dates (Release availability immediately)
+    await tx.bookingItem.updateMany({
+      where: { bookingId },
+      data: { checkOut: new Date() }
+    });
 
-  await db.roomUnit.update({
-    where: { id: unitId },
-    data: { status: "DIRTY" },
+    // 2. Mark Booking as Completed
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: "COMPLETED",
+        updatedById: session.user.id,
+      },
+    });
+
+    // 3. Mark Unit as Dirty
+    await tx.roomUnit.update({
+      where: { id: unitId },
+      data: { status: "DIRTY" },
+    });
   });
 
   revalidatePath("/admin/front-desk");
