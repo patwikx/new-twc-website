@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 
 // Cart item now stores all necessary details to avoid database lookups
@@ -102,10 +101,12 @@ export const useCartStore = create<CartStore>()(
       getCartSubtotal: () => {
         const { items } = get();
         return items.reduce((total, item) => {
-          const start = typeof item.checkIn === 'string' ? new Date(item.checkIn) : item.checkIn;
-          const end = typeof item.checkOut === 'string' ? new Date(item.checkOut) : item.checkOut;
-          
-          const nights = Math.max(1, differenceInDays(end, start));
+          const start = typeof item.checkIn === 'string' ? new Date(item.checkIn) : new Date(item.checkIn);
+          const end = typeof item.checkOut === 'string' ? new Date(item.checkOut) : new Date(item.checkOut);
+          // Normalize dates to midnight for consistent nights calculation
+          start.setHours(0, 0, 0, 0);
+          end.setHours(0, 0, 0, 0);
+          const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
           return total + item.roomPrice * nights;
         }, 0);
       },

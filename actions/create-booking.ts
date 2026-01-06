@@ -93,7 +93,10 @@ export async function createBooking(
 
       const checkIn = new Date(item.checkIn);
       const checkOut = new Date(item.checkOut);
-      const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+      // Normalize dates to midnight to avoid time-of-day discrepancies
+      checkIn.setHours(0, 0, 0, 0);
+      checkOut.setHours(0, 0, 0, 0);
+      const nights = Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
       
       if (nights <= 0) {
         return { success: false, error: "Invalid check-in/check-out dates", code: 'VALIDATION_ERROR' };

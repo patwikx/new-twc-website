@@ -9,7 +9,7 @@ import { Lock, Check, X, Loader2, AlertCircle } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback } from "react";
-import { addDays, differenceInDays, parseISO, format } from "date-fns";
+import { addDays, parseISO, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/booking/DateRangePicker";
 import { Calendar } from "@/components/ui/calendar";
@@ -28,6 +28,18 @@ import {
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown } from "lucide-react";
 import { useSession } from "next-auth/react";
+
+// Helper to calculate nights by normalizing dates to midnight
+// This ensures consistent calculation regardless of check-in/check-out times
+function calculateNights(checkIn: Date | string, checkOut: Date | string): number {
+   const startDate = new Date(checkIn);
+   const endDate = new Date(checkOut);
+   // Normalize both dates to midnight to avoid time-of-day issues
+   startDate.setHours(0, 0, 0, 0);
+   endDate.setHours(0, 0, 0, 0);
+   const diffMs = endDate.getTime() - startDate.getTime();
+   return Math.max(1, Math.round(diffMs / (24 * 60 * 60 * 1000)));
+}
 
 // Availability validation types
 interface AvailabilityResult {
@@ -312,16 +324,14 @@ function BookingForm() {
 
    // Calculations
    const cartSubtotal = cartItems.reduce((acc, item) => {
-      const checkInDate = new Date(item.checkIn);
-      const checkOutDate = new Date(item.checkOut);
-      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
-      const nights = Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+      // Use normalized nights calculation for consistency with backend
+      const nights = calculateNights(item.checkIn, item.checkOut);
       // Use roomPrice from cart item (embedded data)
       return acc + ((item.roomPrice || 0) * nights);
    }, 0);
 
    const singleNights = date?.from && date?.to 
-      ? Math.max(1, Math.ceil((date.to.getTime() - date.from.getTime()) / (24 * 60 * 60 * 1000))) 
+      ? calculateNights(date.from, date.to) 
       : 1;
    const singleRoomTotal = singleRoomPrice * singleNights; // Using embedded or fetched price
 
@@ -628,7 +638,7 @@ function BookingForm() {
                                        <p className="font-medium text-sm">{item.roomName || 'Room'}</p>
                                        <p className="text-xs text-neutral-400">{item.propertyName || 'Property'}</p>
                                     </div>
-                                    <span className="text-sm font-medium">₱{((item.roomPrice || 0) * Math.max(1, differenceInDays(item.checkOut, item.checkIn))).toLocaleString()}</span>
+                                    <span className="text-sm font-medium">₱{((item.roomPrice || 0) * calculateNights(item.checkIn, item.checkOut)).toLocaleString()}</span>
                                  </div>
                                  
                                  {/* Editable Dates & Guests */}
@@ -785,7 +795,7 @@ function BookingForm() {
                                  })()}
                                  
                                  <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
-                                    <span className="text-neutral-400">{Math.max(1, differenceInDays(item.checkOut, item.checkIn))} Night{Math.max(1, differenceInDays(item.checkOut, item.checkIn)) > 1 ? 's' : ''}</span>
+                                    <span className="text-neutral-400">{calculateNights(item.checkIn, item.checkOut)} Night{calculateNights(item.checkIn, item.checkOut) > 1 ? 's' : ''}</span>
                                     <span className="text-neutral-400">₱{(item.roomPrice || 0).toLocaleString()}/night</span>
                                  </div>
                               </div>
