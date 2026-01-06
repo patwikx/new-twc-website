@@ -56,7 +56,7 @@ export async function getFrontDeskData(propertyId: string) {
       booking: {
         status: "CONFIRMED",
       },
-      // Removed checkIn: { gte: todayStart } to include late arrivals from yesterday
+      checkIn: { gte: new Date(new Date().setDate(new Date().getDate() - 7)) } // Look back 7 days for unassigned bookings
     },
     include: {
       booking: true,
@@ -128,6 +128,9 @@ export async function getDashboardStats(propertyId: string) {
 }
 
 export async function getCalendarData(propertyId: string, month: Date) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
   // Get start and end of month
   const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
   const endOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0);
@@ -252,17 +255,34 @@ export async function createEvent(data: {
         // 2. Block Units (Create Bookings)
         if (blockedUnitIds && blockedUnitIds.length > 0) {
              const units = await tx.roomUnit.findMany({
-                 where: { id: { in: blockedUnitIds } },
-                 include: { roomType: true }
+                 where: { 
+                     id: { in: blockedUnitIds },
+                     roomType: { propertyId: data.propertyId } // Ensure unit belongs to property
+                 },
+                 include: { 
+                     roomType: true,
+                     bookingItems: {
+                         where: {
+                             booking: { status: { in: ['CONFIRMED', 'CHECKED_IN'] } },
+                             OR: [
+                                 { checkIn: { lte: data.endDate }, checkOut: { gte: data.startDate } }
+                             ]
+                         }
+                     }
+                 }
              });
 
              for (const unit of units) {
+                 if (unit.bookingItems.length > 0) {
+                     throw new Error(`Unit ${unit.number} is not available for the selected dates.`);
+                 }
+
                  await tx.booking.create({
                      data: {
                          propertyId: data.propertyId,
                          eventId: newEvent.id,
                          status: "CONFIRMED",
-                         shortRef: Math.random().toString(36).substring(2, 10).toUpperCase(),
+                         shortRef: crypto.randomUUID().substring(0, 8).toUpperCase(), // Unique ref
                          guestFirstName: "Event",
                          guestLastName: data.title,
                          guestEmail: "events@internal", // System placeholder
@@ -373,7 +393,7 @@ export async function checkInBooking(
         data: { status: "CHECKED_IN" }
     });
 
-    // 3. Update Guest Details & ID Scans
+    // 4. Update Guest Details & ID Scans
     if (extras) {
         if (extras.idScans || extras.guestPhone || extras.guestAddress) {
             // Update User Profile
@@ -402,7 +422,7 @@ export async function checkInBooking(
             }
         }
 
-        // 4. Record Initial Payment (e.g. Security Deposit or Balance)
+        // 5. Record Initial Payment (e.g. Security Deposit or Balance)
         if (extras.initialPayment && extras.initialPayment > 0) {
             await tx.payment.create({
                 data: {
