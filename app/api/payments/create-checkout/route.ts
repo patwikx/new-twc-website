@@ -169,7 +169,28 @@ export async function POST(req: NextRequest) {
         guest_name: `${booking.guestFirstName} ${booking.guestLastName}`,
         guest_email: booking.guestEmail,
         guest_phone: booking.guestPhone,
-      }
+      },
+      lineItems: [
+        {
+          name: description,
+          amount: Number(booking.totalAmount) / 1.22, // Approximate base (Back-calculate)
+          currency: "PHP",
+          quantity: 1,
+          description: "Room Charges"
+        },
+        {
+          name: "Service Charge (10%)",
+          amount: (Number(booking.totalAmount) / 1.22) * 0.10,
+          currency: "PHP",
+          quantity: 1
+        },
+        {
+          name: "VAT (12%)",
+          amount: (Number(booking.totalAmount) / 1.22) * 1.10 * 0.12, 
+          currency: "PHP",
+          quantity: 1
+        }
+      ]
     });
 
     if ("error" in result) {
