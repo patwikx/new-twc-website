@@ -3,6 +3,8 @@
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
+import { Loader2 } from "lucide-react"; // Import Loader2
+import { useState } from "react";
 
 // Google Icon Component
 const GoogleIcon = () => (
@@ -29,7 +31,10 @@ const GoogleIcon = () => (
 
 
 export const Social = () => {
+  const [isLoading, setIsLoading] = useState(false);
+
   const onClick = (provider: "google" | "facebook") => {
+    setIsLoading(true);
     signIn(provider, {
       callbackUrl: DEFAULT_LOGIN_REDIRECT,
     });
@@ -40,11 +45,16 @@ export const Social = () => {
       <Button
         type="button"
         variant="outline"
+        disabled={isLoading}
         className="w-full bg-transparent border-neutral-700 text-white hover:bg-white hover:text-black hover:border-white h-11 transition-all rounded-none uppercase text-xs tracking-wider"
         onClick={() => onClick("google")}
       >
-        <GoogleIcon />
-        Google
+        {isLoading ? (
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        ) : (
+          <GoogleIcon />
+        )}
+        {isLoading ? "Redirecting..." : "Google"}
       </Button>
     </div>
   );
