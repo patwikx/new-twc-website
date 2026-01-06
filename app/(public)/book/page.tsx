@@ -117,9 +117,14 @@ function BookingForm() {
    const [date, setDate] = useState<DateRange | undefined>(() => {
       const today = new Date();
       today.setHours(14, 0, 0, 0); // Default to 2PM Today
+      
+      // Separate default checkout construction to enforce 12:00
+      const defaultCheckOut = addDays(today, 1);
+      defaultCheckOut.setHours(12, 0, 0, 0);
+
       return {
          from: checkInParam ? parseISO(checkInParam) : today,
-         to: checkOutParam ? parseISO(checkOutParam) : addDays(today, 1), // If param missing, addDays preserves hours? No, addDays is day-math.
+         to: checkOutParam ? parseISO(checkOutParam) : defaultCheckOut,
       };
    });
 
