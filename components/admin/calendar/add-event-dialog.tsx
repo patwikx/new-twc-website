@@ -88,7 +88,7 @@ export function AddEventDialog({ propertyId, trigger, open, onOpenChange }: AddE
   const [checkedUnitIds, setCheckedUnitIds] = useState<Record<string, boolean>>({});
   const [checkedMenuItemIds, setCheckedMenuItemIds] = useState<Record<string, boolean>>({});
 
-  const form = useForm<FormValues>({
+  const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
@@ -308,7 +308,7 @@ export function AddEventDialog({ propertyId, trigger, open, onOpenChange }: AddE
                                 <FormItem>
                                 <FormLabel>Target Rooms</FormLabel>
                                 <FormControl>
-                                    <Input type="number" {...field} className="bg-white/5 border-white/10" />
+                                    <Input type="number" {...field} value={(field.value as number) || ""} className="bg-white/5 border-white/10" />
                                 </FormControl>
                                 <FormMessage />
                                 </FormItem>
@@ -321,7 +321,7 @@ export function AddEventDialog({ propertyId, trigger, open, onOpenChange }: AddE
                                 <FormItem>
                                 <FormLabel>Est. Guests</FormLabel>
                                 <FormControl>
-                                    <Input type="number" {...field} className="bg-white/5 border-white/10" />
+                                    <Input type="number" {...field} value={(field.value as number) || ""} className="bg-white/5 border-white/10" />
                                 </FormControl>
                                 <FormMessage />
                                 </FormItem>
