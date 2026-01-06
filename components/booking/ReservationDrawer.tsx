@@ -57,7 +57,12 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
             <div className="flex-1 overflow-y-auto">
               <div className="p-6 space-y-6">
                 {items.map((item) => {
-                  const days = (new Date(item.checkOut).getTime() - new Date(item.checkIn).getTime()) / (1000 * 3600 * 24);
+                  // Normalize dates to midnight for consistent nights calculation
+                  const checkInNormalized = new Date(item.checkIn);
+                  const checkOutNormalized = new Date(item.checkOut);
+                  checkInNormalized.setHours(0, 0, 0, 0);
+                  checkOutNormalized.setHours(0, 0, 0, 0);
+                  const nights = Math.max(1, Math.round((checkOutNormalized.getTime() - checkInNormalized.getTime()) / (24 * 60 * 60 * 1000)));
 
                   return (
                     <div key={item.id} className="group relative flex gap-4 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -95,7 +100,7 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                             <div className="flex items-center gap-2 text-xs text-neutral-400">
                                 <Calendar className="w-3 h-3" />
                                 <span>
-                                  {format(new Date(item.checkIn), "MMM d")} - {format(new Date(item.checkOut), "MMM d")} ({days} nights)
+                                  {format(new Date(item.checkIn), "MMM d")} - {format(new Date(item.checkOut), "MMM d")} ({nights} {nights === 1 ? 'night' : 'nights'})
                                 </span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-neutral-400">
@@ -104,7 +109,7 @@ export function ReservationDrawer({ children }: { children?: React.ReactNode }) 
                             </div>
                         </div>
                         
-                        <p className="text-sm font-medium pt-1">₱{(item.roomPrice * days).toLocaleString()}</p>
+                        <p className="text-sm font-medium pt-1">₱{(item.roomPrice * nights).toLocaleString()}</p>
                       </div>
                     </div>
                   );
