@@ -698,7 +698,7 @@ function BookingForm() {
                                                    selected={new Date(item.checkOut)}
                                                    onSelect={(date) => {
                                                       if (!date) return;
-                                                      const newDate = date;
+                                                      const newDate = new Date(date);
                                                       // Normalize Check-out to 12:00 PM (12:00)
                                                       newDate.setHours(12,0,0,0);
 
