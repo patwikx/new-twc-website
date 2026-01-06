@@ -13,6 +13,7 @@ import { NavUser } from "@/components/admin/nav-user"
 import { 
   Building2, 
   LayoutDashboard, 
+  Calendar,
   CalendarDays, 
   BedDouble, 
   Users, 
@@ -41,180 +42,85 @@ const NAV_GROUPS = [
     label: "Dashboard",
     items: [
       { title: "Overview", icon: LayoutDashboard, url: "/admin", permission: "analytics:view" },
-      { 
-        title: "Analytics", 
-        icon: BarChart3, 
-        url: "/admin/dashboard/analytics",
-        permission: "analytics:view",
-        items: [
-          { title: "Overview", url: "/admin/dashboard/analytics" },
-          { title: "Inventory", url: "/admin/dashboard/inventory" },
-          { title: "Sales", url: "/admin/dashboard/sales" },
-        ],
-      },
     ],
   },
   {
-    label: "Reservations",
+    label: "Management",
     items: [
-      { title: "Bookings", icon: CalendarDays, url: "/admin/bookings", permission: "bookings:view" },
-      { title: "Front Desk", icon: BedDouble, url: "/admin/front-desk", permission: "bookings:edit" },
-    ],
-  },
-  {
-    label: "Point of Sale",
-    items: [
-      { 
-        title: "POS Terminal", 
-        icon: CreditCard, 
-        url: "/admin/pos",
-        permission: "properties:view",
-      },
-      { 
-        title: "Kitchen Display", 
-        icon: ChefHat, 
-        url: "/admin/pos/kitchen",
-        permission: "properties:view",
-      },
-      { 
-        title: "Outlets", 
-        icon: Store, 
-        url: "/admin/pos/outlets",
-        permission: "properties:view",
-      },
-      { 
-        title: "Shifts", 
-        icon: Clock, 
-        url: "/admin/pos/shifts",
-        permission: "properties:view",
-      },
-    ],
-  },
-  {
-    label: "Inventory",
-    items: [
-      { 
-        title: "Stock Management", 
-        icon: Package, 
-        url: "/admin/inventory/items",
-        permission: "properties:view",
-        items: [
-          { title: "Stock Items", url: "/admin/inventory/items" },
-          { title: "Categories", url: "/admin/inventory/categories" },
-          { title: "Warehouses", url: "/admin/inventory/warehouses" },
-          { title: "Receive Stock", url: "/admin/inventory/receive" },
-          { title: "Transfer Stock", url: "/admin/inventory/transfer" },
-          { title: "Stock Adjustment", url: "/admin/inventory/adjust" },
-          { title: "Bulk Import", url: "/admin/inventory/bulk/import" },
-        ],
-      },
-      { 
-        title: "Purchase Orders", 
-        icon: FileText, 
-        url: "/admin/inventory/purchase-orders",
-        permission: "properties:view",
-      },
-      { 
-        title: "Suppliers", 
-        icon: Truck, 
-        url: "/admin/inventory/suppliers",
-        permission: "properties:view",
-        items: [
-          { title: "Supplier List", url: "/admin/inventory/suppliers" },
-          { title: "Receive Consignment", url: "/admin/inventory/consignment/receive" },
-          { title: "Settlements", url: "/admin/inventory/consignment/settlements" },
-        ],
-      },
-      { 
-        title: "Requisitions", 
-        icon: ClipboardList, 
-        url: "/admin/inventory/requisitions",
-        permission: "properties:view",
-      },
-      { 
-        title: "Cycle Counts", 
-        icon: ClipboardCheck, 
-        url: "/admin/inventory/cycle-counts",
-        permission: "cycle-count:view",
-      },
-    ],
-  },
-  {
-    label: "Food & Beverage",
-    items: [
-      { 
-        title: "Recipes", 
-        icon: ChefHat, 
-        url: "/admin/restaurant/recipes",
-        permission: "properties:view",
-      },
-      { 
-        title: "Menu Items", 
-        icon: Utensils, 
-        url: "/admin/restaurant/menu",
-        permission: "properties:view",
-      },
-      { 
-        title: "Waste Tracking", 
-        icon: Trash2, 
-        url: "/admin/inventory/waste",
-        permission: "properties:view",
-      },
-    ],
-  },
-  {
-    label: "Housekeeping",
-    items: [
-      { 
-        title: "Linens", 
-        icon: Shirt, 
-        url: "/admin/housekeeping/linens",
-        permission: "properties:view",
-      },
-    ],
-  },
-  {
-    label: "Reports",
-    items: [
-      { 
-        title: "Inventory Reports", 
-        icon: BarChart3, 
-        url: "/admin/reports/inventory",
-        permission: "analytics:view",
-      },
-      { 
-        title: "Restaurant Reports", 
-        icon: ChefHat, 
-        url: "/admin/reports/restaurant",
-        permission: "analytics:view",
-      },
-    ],
-  },
-  {
-    label: "Configuration",
-    items: [
-      { title: "Properties", icon: Building2, url: "/admin/properties", permission: "properties:view" },
-      { 
-        title: "Master Data", 
-        icon: FileText, 
-        url: "/admin/settings/master-data",
-        permission: "settings:view",
-        items: [
-          { title: "Units of Measure", url: "/admin/settings/units" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
-      { title: "Users", icon: Users, url: "/admin/users", permission: "users:view" },
-      { title: "Roles & Permissions", icon: ShieldCheck, url: "/admin/roles", permission: "settings:manage" },
-      { title: "Notifications", icon: Bell, url: "/admin/notifications", permission: "settings:view" },
-      { title: "Audit Log", icon: History, url: "/admin/audit", permission: "settings:view" },
-      { title: "Settings", icon: Settings, url: "/admin/settings", permission: "settings:view" },
-    ],
-  },
+       {
+          title: "Operations",
+          icon: BedDouble,
+          url: "/admin/operations",
+          permission: "bookings:view",
+          items: [
+             { title: "Front Desk", url: "/admin/front-desk" },
+             { title: "Calendar", url: "/admin/calendar" },
+             { title: "Bookings", url: "/admin/bookings" },
+             { title: "Guests", url: "/admin/guests" },
+             { title: "Housekeeping", url: "/admin/housekeeping/linens" },
+          ]
+       },
+       {
+          title: "Point of Sale",
+          icon: CreditCard,
+          url: "/admin/pos",
+          permission: "properties:view",
+          items: [
+             { title: "Terminal", url: "/admin/pos" },
+             { title: "Kitchen Display", url: "/admin/pos/kitchen" },
+             { title: "Outlets", url: "/admin/pos/outlets" },
+             { title: "Shifts", url: "/admin/pos/shifts" },
+          ]
+       },
+       {
+          title: "Catalog",
+          icon: Store,
+          url: "/admin/catalog",
+          permission: "properties:view",
+          items: [
+             { title: "Menu Items", url: "/admin/restaurant/menu" },
+             { title: "Recipes", url: "/admin/restaurant/recipes" },
+             { title: "Stock Items", url: "/admin/inventory/items" },
+          ]
+       },
+       {
+          title: "Inventory",
+          icon: Package,
+          url: "/admin/inventory",
+          permission: "properties:view",
+          items: [
+             { title: "Purchasing", url: "/admin/inventory/purchase-orders" },
+             { title: "Suppliers", url: "/admin/inventory/suppliers" },
+             { title: "Stock Movement", url: "/admin/inventory/receive" },
+             { title: "Requisitions", url: "/admin/inventory/requisitions" },
+             { title: "Cycle Counts", url: "/admin/inventory/cycle-counts" },
+             { title: "Waste Tracking", url: "/admin/inventory/waste" },
+          ]
+       },
+       {
+          title: "Insights",
+          icon: BarChart3,
+          url: "/admin/reports",
+          permission: "analytics:view",
+          items: [
+             { title: "Analytics", url: "/admin/dashboard/analytics" },
+             { title: "Inventory Reports", url: "/admin/reports/inventory" },
+             { title: "Sales Reports", url: "/admin/reports/restaurant" },
+          ]
+       },
+       {
+          title: "Administration",
+          icon: Settings,
+          url: "/admin/settings",
+          permission: "settings:view",
+          items: [
+             { title: "Properties", url: "/admin/properties" },
+             { title: "Users & Roles", url: "/admin/users" },
+             { title: "General Settings", url: "/admin/settings" },
+          ]
+       }
+    ]
+  }
 ];
 
 export function AppSidebar({ 

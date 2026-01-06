@@ -89,6 +89,10 @@ export function UnitActionDialog({
   // Checkout Confirmation
   const [showCheckoutDialog, setShowCheckoutDialog] = React.useState(false);
 
+  // Check-In Confirmation
+  const [confirmCheckInOpen, setConfirmCheckInOpen] = React.useState(false);
+  const [selectedCheckInBookingId, setSelectedCheckInBookingId] = React.useState<string | null>(null);
+
   // Room Transfer State
   const [showTransferDialog, setShowTransferDialog] = React.useState(false);
   const [transferTargetId, setTransferTargetId] = React.useState("");
@@ -143,16 +147,24 @@ export function UnitActionDialog({
 
   if (!unit) return null;
 
-  const handleCheckIn = async (bookingItemId: string) => {
+  const handleCheckIn = (bookingItemId: string) => {
+      setSelectedCheckInBookingId(bookingItemId);
+      setConfirmCheckInOpen(true);
+  };
+
+  const executeCheckIn = async () => {
+    if (!selectedCheckInBookingId) return;
     setLoading(true);
     try {
-      await checkInBooking(bookingItemId, unit.id);
+      await checkInBooking(selectedCheckInBookingId, unit.id);
       toast.success("Guest checked in successfully.");
       onOpenChange(false);
     } catch (error) {
       toast.error("Failed to check in.");
     } finally {
       setLoading(false);
+      setConfirmCheckInOpen(false);
+      setSelectedCheckInBookingId(null);
     }
   };
 
@@ -1318,6 +1330,25 @@ export function UnitActionDialog({
               </DialogFooter>
            </DialogContent>
         </Dialog>
+
+        {/* Check-In Confirmation Alert */}
+        <AlertDialog open={confirmCheckInOpen} onOpenChange={setConfirmCheckInOpen}>
+           <AlertDialogContent className="bg-neutral-900 border-white/10 text-white">
+               <AlertDialogHeader>
+                   <AlertDialogTitle>Confirm Check-In</AlertDialogTitle>
+                   <AlertDialogDescription className="text-neutral-400">
+                       Are you sure you want to check in this guest to Unit {unit?.number}?
+                       This will mark the unit as OCCUPIED.
+                   </AlertDialogDescription>
+               </AlertDialogHeader>
+               <AlertDialogFooter>
+                   <AlertDialogCancel className="bg-transparent border-white/10 hover:bg-white/10 hover:text-white">Cancel</AlertDialogCancel>
+                   <AlertDialogAction onClick={executeCheckIn} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Check-In"}
+                   </AlertDialogAction>
+               </AlertDialogFooter>
+           </AlertDialogContent>
+        </AlertDialog>
 
       </DialogContent>
     </Dialog>

@@ -250,6 +250,7 @@ model Property {
     // POS Relations
     salesOutlets   SalesOutlet[]
     purchaseOrders PurchaseOrder[]
+    events         Event[]
 }
 
 model PropertyPolicy {
@@ -445,6 +446,8 @@ model Booking {
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+    event     Event?   @relation(fields: [eventId], references: [id])
+    eventId   String?
 
     @@index([status])
     @@index([paymentStatus])
@@ -481,6 +484,7 @@ model BookingVerificationToken {
 enum BookingStatus {
     PENDING
     CONFIRMED
+    CHECKED_IN
     CANCELLED
     COMPLETED
 }
@@ -1618,4 +1622,47 @@ model Notification {
 
     @@index([userId, isRead])
     @@index([createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// 7. Events & Functions (Room Blocking)
+// -----------------------------------------------------------------------------
+
+model Event {
+    id          String      @id @default(uuid())
+    title       String
+    description String?     @db.Text
+    startDate   DateTime
+    endDate     DateTime
+    status      EventStatus @default(TENTATIVE)
+
+    // Event Details
+    guestCount  Int?
+    roomCount   Int? // Target number of rooms
+    menuDetails Json? // Structured menu selection
+    notes       String? @db.Text
+
+    // Relations
+    propertyId String
+    property   Property @relation(fields: [propertyId], references: [id])
+
+    // An event can be linked to bookings if specific rooms are blocked/reserved
+    bookings Booking[]
+
+    // Audit
+    createdById String?
+    updatedById String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([propertyId])
+    @@index([startDate, endDate])
+}
+
+enum EventStatus {
+    TENTATIVE
+    CONFIRMED
+    CANCELLED
+    COMPLETED
 }
