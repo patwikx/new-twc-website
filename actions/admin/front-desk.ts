@@ -378,28 +378,28 @@ export async function checkInBooking(
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
 
-  // Validate Unit Status First
-  const unit = await db.roomUnit.findUnique({ where: { id: unitId } });
-  if (!unit) throw new Error("Unit not found");
-  if (unit.status !== "CLEAN") {
-    throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN to check in.`);
-  }
-
   await db.$transaction(async (tx) => {
-    // 1. Link Unit to Booking Item
+    // 1. Validate Unit Status (Inside Transaction to prevent Race Conditions)
+    const unit = await tx.roomUnit.findUnique({ where: { id: unitId } });
+    if (!unit) throw new Error("Unit not found");
+    if (unit.status !== "CLEAN") {
+      throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN to check in.`);
+    }
+
+    // 2. Link Unit to Booking Item
     const bookingItem = await tx.bookingItem.update({
       where: { id: bookingItemId },
       data: { roomUnitId: unitId },
       include: { booking: true }
     });
 
-    // 2. Update Unit Status to OCCUPIED
+    // 3. Update Unit Status to OCCUPIED
     await tx.roomUnit.update({
       where: { id: unitId },
       data: { status: "OCCUPIED" },
     });
 
-    // 3. Update Booking Status to CHECKED_IN
+    // 4. Update Booking Status to CHECKED_IN
     await tx.booking.update({
         where: { id: bookingItem.bookingId },
         data: { status: "CHECKED_IN" }
@@ -499,17 +499,16 @@ export async function createWalkIn(data: {
     ? Number(property.serviceChargeRate)
     : 0;
 
-  // Validate Unit Status
-  const unit = await db.roomUnit.findUnique({ where: { id: data.unitId } });
-  if (!unit) throw new Error("Unit not found");
-  if (unit.status !== "CLEAN") {
-     throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN for walk-ins.`);
-  }
-
   const firstName = data.guestName.split(" ")[0];
   const lastName = data.guestName.split(" ").slice(1).join(" ") || "Guest";
 
   const result = await db.$transaction(async (tx) => {
+      // 1. Validate Unit Status (Inside Transaction)
+      const unit = await tx.roomUnit.findUnique({ where: { id: data.unitId } });
+      if (!unit) throw new Error("Unit not found");
+      if (unit.status !== "CLEAN") {
+         throw new Error(`Unit ${unit.number} is ${unit.status}. Status must be CLEAN for walk-ins.`);
+      }
       // 1. Create/Update User
       let userId = null;
       if (data.guestEmail) {
