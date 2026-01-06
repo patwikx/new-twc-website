@@ -20,21 +20,36 @@ interface CreateCheckoutParams {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  lineItems?: {
+    name: string;
+    amount: number; // in PHP
+    currency: string;
+    quantity: number;
+    description?: string;
+  }[];
 }
 
 export async function createPayMongoCheckoutSession(
   params: CreateCheckoutParams
 ): Promise<{ checkoutUrl: string; sessionId: string } | { error: string }> {
   try {
-    const lineItems: LineItem[] = [
-      {
-        currency: "PHP",
-        amount: Math.round(params.amount * 100), // Convert to centavos
-        description: params.description,
-        name: `Booking ${params.bookingNumber}`,
-        quantity: 1,
-      },
-    ];
+    const lineItems: LineItem[] = params.lineItems 
+      ? params.lineItems.map(item => ({
+          currency: "PHP",
+          amount: Math.round(item.amount * 100), // Convert to centavos
+          description: item.description || item.name,
+          name: item.name,
+          quantity: item.quantity
+        }))
+      : [
+          {
+            currency: "PHP",
+            amount: Math.round(params.amount * 100), // Convert to centavos
+            description: params.description,
+            name: `Booking ${params.bookingNumber}`,
+            quantity: 1,
+          },
+        ];
 
     const paymentMethods: PaymentMethodType[] = [
       "card",

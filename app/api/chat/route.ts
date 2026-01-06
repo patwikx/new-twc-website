@@ -56,7 +56,10 @@ export async function POST(req: Request) {
 
     // Build condensed property summaries to reduce token usage
     const propertySummaries = properties.map(p => 
-      `${p.name} (${p.location}): ${p.rooms.length} rooms from ₱${Math.min(...p.rooms.map(r => Number(r.price))).toLocaleString()} to ₱${Math.max(...p.rooms.map(r => Number(r.price))).toLocaleString()}/night. Rooms: ${p.rooms.map(r => `${r.name} (₱${Number(r.price).toLocaleString()}, ${r.capacity} guests)`).join(', ')}.`
+      `${p.name} (${p.location}): ${p.rooms.length} rooms from ₱${Math.min(...p.rooms.map(r => Number(r.price))).toLocaleString()} to ₱${Math.max(...p.rooms.map(r => Number(r.price))).toLocaleString()}/night. 
+      Rooms: ${p.rooms.map(r => 
+        `${r.name} (₱${Number(r.price).toLocaleString()}, ${r.capacity} guests) - Amenities: ${r.amenities.join(', ') || 'Standard amenities'}`
+      ).join('; ')}.`
     ).join('\n');
 
     const experienceSummaries = experiences.map(e => 
@@ -74,11 +77,19 @@ LOCAL EXPERIENCES:
 ${experienceSummaries}
 
 BOOKING PROCESS:
-1. Browse properties on homepage or /properties
-2. Select a room and click "Add to Cart"
-3. Review cart at /cart, adjust dates/guests
-4. Proceed to Checkout, fill in guest details
-5. Complete payment and receive confirmation
+1. **Search**: Browse properties on homepage or [/properties](/properties).
+2. **Select**: Choose an available room and add to cart.
+3. **Checkout**: Review cart at [/cart](/cart) and proceed.
+4. **Payment**: Select a payment method (e.g., GCash/Maya) via PayMongo.
+5. **Confirmation**: Receive booking confirmation.
+
+NAVIGATION SHORTCUTS:
+• Browse Properties: [/properties](/properties)
+• My Cart: [/cart](/cart)
+• My Bookings: [/bookings](/bookings)
+• My Account: [/account](/account)
+• Contact Us: [/contact](/contact)
+• Login: [/auth/login](/auth/login)
 
 RESPONSE RULES:
 • Keep responses concise (2-4 sentences)
@@ -86,6 +97,7 @@ RESPONSE RULES:
 • Use line breaks between ideas
 • Prices are in Philippine Peso (₱)
 • Be warm and helpful
+• **Always use the navigation shortcuts above when directing users.**
 
 User asks: ${message}
 `;
