@@ -146,8 +146,13 @@ export function AddEventDialog({ propertyId, trigger, open, onOpenChange }: AddE
   function onSubmit(values: FormValues) {
     if (!values.dateRange.from) return; 
     // Prepare data
-    const startDate = values.dateRange.from;
-    const endDate = values.dateRange.to || values.dateRange.from;
+    // Normalize dates to Hotel Time (2 PM Check-in, 12 PM Check-out) to avoid UTC shifts
+    const startDate = new Date(values.dateRange.from);
+    startDate.setHours(14, 0, 0, 0); // 2:00 PM
+
+    const endDate = new Date(values.dateRange.to || values.dateRange.from);
+    endDate.setHours(12, 0, 0, 0); // 12:00 PM
+
     const blockedUnitIds = Object.keys(checkedUnitIds).filter(id => checkedUnitIds[id]);
     
     // Prepare menu details

@@ -116,10 +116,15 @@ function BookingForm() {
    // Single Room State
    const [date, setDate] = useState<DateRange | undefined>(() => {
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      today.setHours(14, 0, 0, 0); // Default to 2PM Today
+      
+      // Separate default checkout construction to enforce 12:00
+      const defaultCheckOut = addDays(today, 1);
+      defaultCheckOut.setHours(12, 0, 0, 0);
+
       return {
          from: checkInParam ? parseISO(checkInParam) : today,
-         to: checkOutParam ? parseISO(checkOutParam) : addDays(today, 1),
+         to: checkOutParam ? parseISO(checkOutParam) : defaultCheckOut,
       };
    });
 
@@ -644,7 +649,8 @@ function BookingForm() {
                                                    onSelect={(date) => {
                                                       if (!date) return;
                                                       const newDate = new Date(date);
-                                                      newDate.setHours(0,0,0,0);
+                                                      // Normalize Check-in to 2:00 PM (14:00)
+                                                      newDate.setHours(14,0,0,0);
                                                       
                                                       const currentCheckOut = new Date(item.checkOut);
                                                       let newCheckOut = new Date(currentCheckOut);
@@ -692,8 +698,9 @@ function BookingForm() {
                                                    selected={new Date(item.checkOut)}
                                                    onSelect={(date) => {
                                                       if (!date) return;
-                                                      const newDate = date;
-                                                      newDate.setHours(0,0,0,0);
+                                                      const newDate = new Date(date);
+                                                      // Normalize Check-out to 12:00 PM (12:00)
+                                                      newDate.setHours(12,0,0,0);
 
                                                       const updatedItems = cartItems.map((ci, i) => 
                                                          i === index ? { ...ci, checkOut: newDate } : ci
