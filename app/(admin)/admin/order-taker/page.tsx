@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 export const dynamic = "force-dynamic";
 
 // Allowed roles for Order Taker
-const ALLOWED_ROLES = ["WAITER", "Super Admin", "ADMIN"];
+const ALLOWED_ROLES = ["Waiter", "Super Admin", "ADMIN"];
 
 interface OrderTakerPageProps {
   searchParams: Promise<{

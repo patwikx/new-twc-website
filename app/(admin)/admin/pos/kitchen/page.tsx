@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { KitchenOrderCard } from "@/components/admin/pos/kitchen-order-card";
+import { KitchenDisplay } from "@/components/admin/pos/kitchen-display";
 import { getKitchenOrders, getKitchenStats } from "@/lib/pos/kitchen";
 import {
   Select,
@@ -141,37 +142,10 @@ export default async function KitchenDisplayPage({ searchParams }: KitchenPagePr
       </div>
 
       {/* Orders Grid */}
-      {!selectedOutlet ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <ChefHat className="h-12 w-12 text-neutral-600 mb-4" />
-          <p className="text-neutral-400">Select an outlet to view kitchen orders</p>
-        </div>
-      ) : kitchenOrders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-          <p className="text-neutral-400">No active orders in the kitchen</p>
-          <p className="text-neutral-500 text-sm mt-1">
-            Orders will appear here when sent from the POS
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {kitchenOrders.map((order) => (
-            <KitchenOrderCard
-              key={order.orderId}
-              orderId={order.orderId}
-              orderNumber={order.orderNumber}
-              tableNumber={order.tableNumber}
-              serverName={order.serverName}
-              status={order.status}
-              items={order.items}
-              createdAt={order.createdAt}
-              ageMinutes={order.ageMinutes}
-              isOverdue={order.isOverdue}
-            />
-          ))}
-        </div>
-      )}
+      <KitchenDisplay 
+        outletId={selectedOutletId || ""}
+        initialOrders={kitchenOrders}
+      />
     </div>
   );
 }

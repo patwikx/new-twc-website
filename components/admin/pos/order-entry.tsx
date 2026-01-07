@@ -56,6 +56,8 @@ import { usePOSSocket } from "@/lib/socket";
 
 
 
+import { ReadyForPickupDialog, ReadyItem } from "./ready-for-pickup-dialog";
+
 interface OrderEntryProps {
   propertyId: string;
   outletId: string;
@@ -87,7 +89,7 @@ export function OrderEntry({
   } = usePOSStore();
   
   // Socket.io for real-time sync
-  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll } = usePOSSocket(outletId);
+  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate } = usePOSSocket(outletId);
 
   const [activeTab, setActiveTab] = React.useState<string>("tables");
   const [selectedTableId, setSelectedTableId] = React.useState<string | null>(
@@ -113,6 +115,7 @@ export function OrderEntry({
   const [checkedInGuests, setCheckedInGuests] = React.useState<HotelGuest[]>([]);
   const [voidTarget, setVoidTarget] = React.useState<{ type: "order" | "item", itemId?: string, itemName?: string, amount: number } | null>(null);
   const [discountTypes, setDiscountTypes] = React.useState<DiscountType[]>([]);
+  const [readyOrders, setReadyOrders] = React.useState<ReadyItem[]>([]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
@@ -120,6 +123,11 @@ export function OrderEntry({
          searchCheckedInGuests().then(setCheckedInGuests);
      }
   }, [isCustomerDialogOpen]);
+
+  // Clear ready orders when switching outlets
+  React.useEffect(() => {
+      setReadyOrders([]);
+  }, [outletId]);
 
   // Socket.io listeners for real-time sync
   React.useEffect(() => {
@@ -147,12 +155,46 @@ export function OrderEntry({
       router.refresh();
     });
 
+    const unsubKitchenUpdate = onKitchenUpdate((data) => {
+      console.log("[Socket] Kitchen update received:", data);
+      
+      if (data.action === "item_ready" && data.data) {
+        // data.data is the order item with order and table
+        const item = data.data;
+        
+        // Defensive check: Ensure menuItem exists
+        if (!item?.menuItem) {
+            console.warn("[Socket] Received item_ready without menuItem:", item);
+            return;
+        }
+
+        // Transform to ReadyItem
+        const readyItem: ReadyItem = {
+           id: item.id,
+           name: item.menuItem.name || "Unknown Item",
+           quantity: item.quantity,
+           tableNumber: item.order?.table?.number || null,
+           orderNumber: item.order?.orderNumber || "Unknown",
+           orderId: item.order?.id || ""
+        };
+        
+        // Add to queue if not already there
+        setReadyOrders(prev => {
+           if (prev.find(i => i.id === readyItem.id)) return prev;
+           return [...prev, readyItem];
+        });
+      }
+      
+      router.refresh();
+    });
+
     return () => {
       unsubTableUpdate();
       unsubOrderUpdate();
       unsubRefreshAll();
+      unsubKitchenUpdate();
     };
-  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, router, currentOrder?.id]);
+  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate, outletId, router, currentOrder?.id]);
 
   // Load discount types on mount
   // Load discount types on mount
@@ -241,7 +283,7 @@ export function OrderEntry({
 
       if (result.error) {
         toast.error(result.error);
-      } else if (result.data) {
+      } else if ("data" in result && result.data) {
         // Add item to local state
         const newItem: OrderItem = {
           id: result.data.id,
@@ -381,7 +423,7 @@ export function OrderEntry({
 
       if (result.error) {
         toast.error(result.error);
-      } else if (result.data) {
+      } else if ("data" in result && result.data) {
         // Use returned order data to update full state including taxes
         setCurrentOrder((prev) => {
           if (!prev) return prev;
@@ -598,7 +640,7 @@ export function OrderEntry({
 
         if (result.error) {
           toast.error(result.error);
-        } else if (result.data) {
+        } else if ("data" in result && result.data) {
           // Update Store
           assignCustomer(customer);
 
@@ -889,6 +931,15 @@ export function OrderEntry({
         onAssign={handleAssignCustomer}
         checkedInGuests={checkedInGuests}
         onSearchGuests={searchCheckedInGuests}
+      />
+      <ReadyForPickupDialog 
+        readyItem={readyOrders.length > 0 ? readyOrders[0] : null}
+        onClose={() => {
+           // Do nothing for now, enforce acknowledgment or let it persist
+        }}
+        onAcknowledge={(itemId: string) => {
+           setReadyOrders(prev => prev.filter(i => i.id !== itemId));
+        }}
       />
     </div>
   );

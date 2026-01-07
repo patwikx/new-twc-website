@@ -89,7 +89,7 @@ export async function getKitchenOrders(
       where: {
         outletId,
         status: {
-          in: ["SENT_TO_KITCHEN", "IN_PROGRESS"],
+          in: ["SENT_TO_KITCHEN", "IN_PROGRESS", "READY"],
         },
       },
       include: {
@@ -108,7 +108,7 @@ export async function getKitchenOrders(
         items: {
           where: {
             status: {
-              in: ["SENT", "PREPARING"],
+              in: ["SENT", "PREPARING", "READY"],
             },
           },
           include: {
@@ -151,6 +151,9 @@ export async function getKitchenOrders(
         };
       });
 
+      // Skip orders with no kitchen items (e.g. all items picked up)
+      if (kitchenItems.length === 0) return null;
+
       return {
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -162,11 +165,64 @@ export async function getKitchenOrders(
         ageMinutes: orderAgeMinutes,
         isOverdue: orderAgeMinutes > config.targetPrepTimeMinutes,
       };
-    });
+    }).filter((order): order is KitchenOrder => order !== null);
 
     return kitchenOrders;
   } catch (error) {
     console.error("Get Kitchen Orders Error:", error);
+    return [];
+  }
+}
+
+/**
+ * Get items that are ready for pickup
+ * Requirements: 6.5
+ * 
+ * @param outletId - The outlet ID
+ * @returns Array of ready items
+ */
+export async function getReadyItems(outletId: string) {
+  try {
+    const items = await db.pOSOrderItem.findMany({
+      where: {
+        status: "READY",
+        order: {
+          outletId,
+        },
+      },
+      include: {
+        menuItem: {
+          select: {
+            name: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            table: {
+              select: {
+                number: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        preparedAt: "asc", 
+      },
+    });
+
+    return items.map(item => ({
+       id: item.id,
+       name: item.menuItem.name,
+       quantity: item.quantity,
+       tableNumber: item.order.table?.number || null,
+       orderNumber: item.order.orderNumber,
+       orderId: item.order.id
+    }));
+  } catch (error) {
+    console.error("Get Ready Items Error:", error);
     return [];
   }
 }
@@ -365,6 +421,11 @@ export async function markItemReady(itemId: string) {
             id: true,
             orderNumber: true,
             status: true,
+            table: {
+              select: {
+                number: true,
+              },
+            },
           },
         },
       },
@@ -378,7 +439,7 @@ export async function markItemReady(itemId: string) {
     });
 
     const allItemsReady = allOrderItems.every(
-      item => item.status === "READY" || item.status === "SERVED" || item.status === "CANCELLED"
+      item => item.status === "READY" || item.status === "SERVED" || item.status === "CANCELLED" || item.status === "PICKED_UP"
     );
 
     if (allItemsReady) {
@@ -438,7 +499,7 @@ export async function markOrderReady(orderId: string) {
     }
 
     // Check if order is in a valid status
-    if (!["SENT_TO_KITCHEN", "IN_PROGRESS"].includes(order.status)) {
+    if (!["SENT_TO_KITCHEN", "IN_PROGRESS", "READY"].includes(order.status)) {
       return { error: `Cannot mark order as ready from status ${order.status}` };
     }
 
@@ -464,8 +525,43 @@ export async function markOrderReady(orderId: string) {
 
     revalidatePath("/admin/pos/kitchen");
     revalidatePath(`/admin/pos/orders/${orderId}`);
+
+    // Fetch updated items to return for socket events
+    const updatedItems = await db.pOSOrderItem.findMany({
+      where: {
+        orderId,
+        status: "READY"
+      },
+      include: {
+        menuItem: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            table: {
+              select: {
+                number: true,
+              },
+            },
+          },
+        },
+      },
+    });
     
-    return { success: true };
+    return { 
+        success: true, 
+        data: updatedItems.map(item => ({
+            ...item,
+            unitPrice: Number(item.unitPrice)
+        }))
+    };
   } catch (error) {
     console.error("Mark Order Ready Error:", error);
     return { error: "Failed to mark order as ready" };
@@ -669,7 +765,100 @@ export async function cancelKitchenItem(itemId: string, reason?: string) {
       }
     };
   } catch (error) {
-    console.error("Cancel Kitchen Item Error:", error);
     return { error: "Failed to cancel item" };
+  }
+}
+
+/**
+ * Acknowledge pickup of a ready item
+ * Requirements: 6.5
+ * 
+ * - WHEN a server acknowledges pickup, THE System SHALL update the OrderItem status to SERVED
+ * 
+ * @param itemId - The order item ID to acknowledge
+ * @returns The updated order item or error
+ */
+export async function acknowledgePickup(itemId: string) {
+  // Validate item ID
+  if (!itemId || itemId.trim() === "") {
+    return { error: "Item ID is required" };
+  }
+
+  try {
+    // Get the order item
+    const orderItem = await db.pOSOrderItem.findUnique({
+      where: { id: itemId },
+      include: {
+        order: {
+            select: {
+                id: true,
+                outletId: true,
+            }
+        }
+      }
+    });
+
+    if (!orderItem) {
+      return { error: "Order item not found" };
+    }
+
+    // If already picked up, treat as success (idempotent)
+    if (orderItem.status === "PICKED_UP" || orderItem.status === "SERVED") {
+        return {
+            success: true,
+            data: {
+                ...orderItem,
+                unitPrice: Number(orderItem.unitPrice),
+            }
+        };
+    }
+
+    // Validate current status - can only acknowledge from READY status
+    if (orderItem.status !== "READY") {
+      return { 
+        error: `Cannot acknowledge pickup from status ${orderItem.status}. Item must be in READY status.` 
+      };
+    }
+
+    const now = new Date();
+
+    // Update the item status
+    const updatedItem = await db.pOSOrderItem.update({
+      where: { id: itemId },
+      data: {
+        status: "PICKED_UP",
+      },
+      include: {
+        menuItem: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    revalidatePath("/admin/pos/kitchen");
+    revalidatePath(`/admin/pos/orders/${orderItem.order.id}`);
+    
+    // Serialize Decimal to Number for client components
+    return { 
+      success: true, 
+      data: {
+        ...updatedItem,
+        unitPrice: Number(updatedItem.unitPrice),
+      }
+    };
+  } catch (error) {
+    console.error("Acknowledge Pickup Error:", error);
+    return { error: "Failed to acknowledge pickup" };
   }
 }

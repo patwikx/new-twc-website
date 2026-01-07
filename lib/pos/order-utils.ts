@@ -155,8 +155,9 @@ const VALID_ITEM_STATUS_TRANSITIONS: Record<OrderItemStatus, OrderItemStatus[]> 
   PENDING: ["SENT", "CANCELLED"],
   SENT: ["PREPARING", "CANCELLED"],
   PREPARING: ["READY", "CANCELLED"],
-  READY: ["SERVED", "CANCELLED"],
+  READY: ["SERVED", "PICKED_UP", "CANCELLED"],
   SERVED: [], // Terminal state
+  PICKED_UP: [], // Terminal state
   CANCELLED: [], // Terminal state
 };
 

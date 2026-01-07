@@ -153,6 +153,23 @@ export function usePOSSocket(outletId: string | undefined) {
     onTableUpdate,
     onOrderUpdate,
     onTablesRefreshAll,
+    onKitchenUpdate: useCallback((callback: (data: { orderId: string; action: string; data?: any }) => void) => {
+        const socket = socketRef.current;
+        if (!socket) return () => {};
+    
+        socket.on("kitchen:updated", callback);
+        return () => socket.off("kitchen:updated", callback);
+      }, []),
+    emitKitchenUpdate: useCallback((orderId: string, action: string, data?: any) => {
+      if (socketRef.current?.connected && outletId) {
+        socketRef.current.emit("kitchen:update", {
+          outletId,
+          orderId,
+          action,
+          data,
+        });
+      }
+    }, [outletId]),
   };
 }
 
@@ -233,5 +250,90 @@ export function useBookingSocket(bookingId: string | undefined) {
   return {
     isConnected,
     onBookingUpdate,
+  };
+}
+
+/**
+ * Hook to use Socket.io for Kitchen Display System
+ */
+export function useKitchenSocket(outletId: string | undefined) {
+  const socketRef = useRef<Socket | null>(null);
+  const hasJoinedRef = useRef(false);
+  const prevOutletIdRef = useRef<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    if (!outletId) return;
+
+    const socket = getSocket();
+    socketRef.current = socket;
+
+    // Reset hasJoinedRef when outletId changes
+    if (prevOutletIdRef.current !== outletId) {
+      if (prevOutletIdRef.current && hasJoinedRef.current) {
+        socket.emit("leave:outlet", prevOutletIdRef.current);
+      }
+      hasJoinedRef.current = false;
+      prevOutletIdRef.current = outletId;
+    }
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    const handleConnect = () => {
+      setIsConnected(true);
+      if (outletId && !hasJoinedRef.current) {
+        socket.emit("join:outlet", outletId);
+        hasJoinedRef.current = true;
+      }
+    };
+
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      hasJoinedRef.current = false;
+    };
+
+    if (socket.connected && !hasJoinedRef.current) {
+      setIsConnected(true);
+      socket.emit("join:outlet", outletId);
+      hasJoinedRef.current = true;
+    }
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      hasJoinedRef.current = false;
+    };
+  }, [outletId]);
+
+  // Emit kitchen updates
+  const emitKitchenUpdate = useCallback((orderId: string, action: string, data?: any) => {
+    if (socketRef.current?.connected && outletId) {
+      socketRef.current.emit("kitchen:update", {
+        outletId,
+        orderId,
+        action,
+        data,
+      });
+    }
+  }, [outletId]);
+
+  // Subscribe to kitchen updates (new orders, cancellations, etc)
+  const onKitchenUpdate = useCallback((callback: (data: { orderId: string; action: string; data?: any }) => void) => {
+    const socket = socketRef.current;
+    if (!socket) return () => {};
+
+    socket.on("kitchen:updated", callback);
+    return () => socket.off("kitchen:updated", callback);
+  }, []);
+
+  return {
+    isConnected,
+    emitKitchenUpdate,
+    onKitchenUpdate,
   };
 }
