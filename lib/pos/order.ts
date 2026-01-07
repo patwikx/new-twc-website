@@ -515,166 +515,176 @@ export async function addOrderItem(data: AddOrderItemInput) {
   }
 
   try {
-    // Get the order
-    const order = await db.pOSOrder.findUnique({
-      where: { id: data.orderId },
-      include: {
-        outlet: {
-          select: {
-            propertyId: true,
-            property: {
-              select: {
-                taxRate: true,
-                serviceChargeRate: true,
+    return await db.$transaction(async (tx) => {
+      // 1. Lock the order row immediately
+      // This serialize concurrent updates to the same order
+      // We do this by updating the updatedAt timestamp
+      try {
+        await tx.pOSOrder.update({
+          where: { id: data.orderId },
+          data: { updatedAt: new Date() } 
+        });
+      } catch (e) {
+        // If update fails (e.g. order doesn't exist), the next findUnique will catch it cleanly
+      }
+
+      // 2. Get the order with updated context
+      const order = await tx.pOSOrder.findUnique({
+        where: { id: data.orderId },
+        include: {
+          outlet: {
+            select: {
+              propertyId: true,
+              property: {
+                select: {
+                  taxRate: true,
+                  serviceChargeRate: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    if (!order) {
-      return { error: "Order not found" };
-    }
+      if (!order) {
+        return { error: "Order not found" };
+      }
 
-    // Check if order can be modified
-    // Allow adding items to any active order status (OPEN, SENT_TO_KITCHEN, IN_PROGRESS, READY, SERVED)
-    // Only block if PAID, CANCELLED, or VOID
-    if (["PAID", "CANCELLED", "VOID"].includes(order.status)) {
-      return { error: `Cannot add items to order with status ${order.status}` };
-    }
-    
-    // Legacy check just in case, but the above exclusion is better
-    const allowedStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
-    if (!allowedStatuses.includes(order.status)) {
-       // Only if we introduce new statuses that shouldn't allow adding
-       return { error: `Cannot add items to order in its current status (${order.status})` };
-    }
+      // Check if order can be modified
+      if (["PAID", "CANCELLED", "VOID"].includes(order.status)) {
+        return { error: `Cannot add items to order with status ${order.status}` };
+      }
+      
+      const allowedStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+      if (!allowedStatuses.includes(order.status)) {
+         return { error: `Cannot add items to order in its current status (${order.status})` };
+      }
 
-    // Get the menu item
-    const menuItem = await db.menuItem.findUnique({
-      where: { id: data.menuItemId },
-    });
+      // 3. Get the menu item
+      const menuItem = await tx.menuItem.findUnique({
+        where: { id: data.menuItemId },
+      });
 
-    if (!menuItem) {
-      return { error: "Menu item not found" };
-    }
+      if (!menuItem) {
+        return { error: "Menu item not found" };
+      }
 
-    // Requirement 5.6: Check if menu item is available
-    if (!menuItem.isAvailable) {
-      return { 
-        error: `Menu item "${menuItem.name}" is unavailable${menuItem.unavailableReason ? `: ${menuItem.unavailableReason}` : ""}` 
-      };
-    }
+      if (!menuItem.isAvailable) {
+        return { 
+          error: `Menu item "${menuItem.name}" is unavailable${menuItem.unavailableReason ? `: ${menuItem.unavailableReason}` : ""}` 
+        };
+      }
 
-    // Check if menu item belongs to the same property
-    if (menuItem.propertyId !== order.outlet.propertyId) {
-      return { error: "Menu item does not belong to this property" };
-    }
+      if (menuItem.propertyId !== order.outlet.propertyId) {
+        return { error: "Menu item does not belong to this property" };
+      }
 
-    // Check for existing pending item with same details
-    const existingItem = await db.pOSOrderItem.findFirst({
-        where: {
-            orderId: data.orderId,
-            menuItemId: data.menuItemId,
-            status: "PENDING",
-            // Use precise filtering for modifiers and notes
-            modifiers: data.modifiers || null,
-            notes: data.notes || null
-        }
-    });
+      // 4. Check for EXISTING pending item (Atomic check within transaction/lock)
+      const existingItem = await tx.pOSOrderItem.findFirst({
+          where: {
+              orderId: data.orderId,
+              menuItemId: data.menuItemId,
+              status: "PENDING",
+              modifiers: data.modifiers || null,
+              notes: data.notes || null
+          }
+      });
 
-    let orderItem;
+      let orderItem;
 
-    if (existingItem) {
-        // Update quantity of existing item
-        orderItem = await db.pOSOrderItem.update({
-            where: { id: existingItem.id },
+      if (existingItem) {
+          // Update quantity of existing item
+          orderItem = await tx.pOSOrderItem.update({
+              where: { id: existingItem.id },
+              data: {
+                  quantity: existingItem.quantity + data.quantity
+              },
+              include: {
+                  menuItem: {
+                    select: {
+                      id: true,
+                      name: true,
+                      category: true,
+                      sellingPrice: true,
+                      imageUrl: true,
+                    },
+                  },
+              }
+          });
+      } else {
+          // Create the order item
+          orderItem = await tx.pOSOrderItem.create({
             data: {
-                quantity: existingItem.quantity + data.quantity
+              orderId: data.orderId,
+              menuItemId: data.menuItemId,
+              quantity: data.quantity,
+              unitPrice: menuItem.sellingPrice,
+              modifiers: data.modifiers || null,
+              notes: data.notes || null,
+              status: "PENDING",
             },
             include: {
-                menuItem: {
-                  select: {
-                    id: true,
-                    name: true,
-                    category: true,
-                    sellingPrice: true,
-                    imageUrl: true,
-                  },
+              menuItem: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  sellingPrice: true,
+                  imageUrl: true,
                 },
-            }
-        });
-    } else {
-        // Create the order item
-        orderItem = await db.pOSOrderItem.create({
-          data: {
-            orderId: data.orderId,
-            menuItemId: data.menuItemId,
-            quantity: data.quantity,
-            unitPrice: menuItem.sellingPrice,
-            modifiers: data.modifiers || null,
-            notes: data.notes || null,
-            status: "PENDING",
-          },
-          include: {
-            menuItem: {
-              select: {
-                id: true,
-                name: true,
-                category: true,
-                sellingPrice: true,
-                imageUrl: true,
               },
             },
-          },
-        });
-    }
+          });
+      }
 
-    // Recalculate order totals
-    await recalculateOrderTotals(data.orderId);
+      // 5. Recalculate totals within the transaction
+      await recalculateOrderTotals(data.orderId, tx);
 
-    // Fetch updated order totals to return to frontend
-    const updatedOrder = await db.pOSOrder.findUnique({
-      where: { id: data.orderId },
-      select: {
-        subtotal: true,
-        taxAmount: true,
-        serviceCharge: true,
-        discountAmount: true,
-        total: true,
-      },
+      // 6. Fetch updated order totals
+      const updatedOrder = await tx.pOSOrder.findUnique({
+        where: { id: data.orderId },
+        select: {
+          subtotal: true,
+          taxAmount: true,
+          serviceCharge: true,
+          discountAmount: true,
+          total: true,
+        },
+      });
+
+      // Side effect (outside tx, or fire-and-forget inside): 
+      // Update inventory availability. 
+      // Note: This is an async side effect that doesn't need to block the transaction commit, 
+      // but usually we want it to happen. Since it's a separate system (Warehouse), 
+      // strict consistency might be overkill or require distributed tx.
+      // We'll queue it after tx success effectively by not awaiting it or doing it here.
+      // Ideally we trigger it after. But for now, let's just do it here non-blocking.
+      const kitchenWarehouse = await tx.warehouse.findFirst({
+        where: {
+          propertyId: order.outlet.propertyId,
+          type: "KITCHEN",
+          isActive: true,
+        },
+      });
+      if (kitchenWarehouse) {
+        updateMenuItemAvailability(data.menuItemId, kitchenWarehouse.id).catch(console.error);
+      }
+
+      revalidatePath("/admin/pos");
+      revalidatePath(`/admin/pos/orders/${data.orderId}`);
+      
+      return { 
+        success: true, 
+        data: serializeOrderItem(orderItem),
+        orderTotals: updatedOrder ? {
+          subtotal: Number(updatedOrder.subtotal),
+          taxAmount: Number(updatedOrder.taxAmount),
+          serviceCharge: Number(updatedOrder.serviceCharge),
+          discountAmount: Number(updatedOrder.discountAmount),
+          total: Number(updatedOrder.total),
+        } : undefined
+      };
     });
-
-    // Update menu item availability in real-time
-    // This recalculates available servings based on current stock
-    const kitchenWarehouse = await db.warehouse.findFirst({
-      where: {
-        propertyId: order.outlet.propertyId,
-        type: "KITCHEN",
-        isActive: true,
-      },
-    });
-    if (kitchenWarehouse) {
-      // Fire and forget - don't block the order
-      updateMenuItemAvailability(data.menuItemId, kitchenWarehouse.id).catch(console.error);
-    }
-
-    revalidatePath("/admin/pos");
-    revalidatePath(`/admin/pos/orders/${data.orderId}`);
-    
-    // Return item data AND updated order totals
-    return { 
-      success: true, 
-      data: serializeOrderItem(orderItem),
-      orderTotals: updatedOrder ? {
-        subtotal: Number(updatedOrder.subtotal),
-        taxAmount: Number(updatedOrder.taxAmount),
-        serviceCharge: Number(updatedOrder.serviceCharge),
-        discountAmount: Number(updatedOrder.discountAmount),
-        total: Number(updatedOrder.total),
-      } : undefined
-    };
   } catch (error) {
     console.error("Add Order Item Error:", error);
     return { error: "Failed to add item to order" };
@@ -859,8 +869,8 @@ export async function assignCustomerToOrder(orderId: string, customer: {
  * Recalculate order totals
  * This is an internal helper that will be expanded in task 8.2
  */
-async function recalculateOrderTotals(orderId: string): Promise<void> {
-  const order = await db.pOSOrder.findUnique({
+async function recalculateOrderTotals(orderId: string, tx: Prisma.TransactionClient = db): Promise<void> {
+  const order = await tx.pOSOrder.findUnique({
     where: { id: orderId },
     include: {
       items: true,
@@ -900,7 +910,7 @@ async function recalculateOrderTotals(orderId: string): Promise<void> {
   const total = subtotal.add(taxAmount).add(serviceCharge).sub(discountAmount).add(tipAmount);
 
   // Update the order
-  await db.pOSOrder.update({
+  await tx.pOSOrder.update({
     where: { id: orderId },
     data: {
       subtotal: subtotal.toDecimalPlaces(2).toNumber(),

@@ -282,7 +282,7 @@ export function OrderTakerTerminal({
 
          if (result.error) {
             toast.error(result.error);
-         } else if (result.data) {
+         } else if ("data" in result && result.data) {
              const newItem = result.data;
              // Use order totals from backend for accurate VAT and service charge
              const totals = result.orderTotals;
@@ -359,7 +359,7 @@ export function OrderTakerTerminal({
 
          if (result.error) {
             toast.error(result.error);
-         } else if (result.data) {
+         } else if ("data" in result && result.data) {
              const newItem = result.data;
              // Use order totals from addOrderItem for accurate VAT and service charge
              const totals = result.orderTotals;

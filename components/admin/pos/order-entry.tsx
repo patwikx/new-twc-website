@@ -271,7 +271,7 @@ export function OrderEntry({
 
       if (result.error) {
         toast.error(result.error);
-      } else if (result.data) {
+      } else if ("data" in result && result.data) {
         // Add item to local state
         const newItem: OrderItem = {
           id: result.data.id,
@@ -411,7 +411,7 @@ export function OrderEntry({
 
       if (result.error) {
         toast.error(result.error);
-      } else if (result.data) {
+      } else if ("data" in result && result.data) {
         // Use returned order data to update full state including taxes
         setCurrentOrder((prev) => {
           if (!prev) return prev;
@@ -628,7 +628,7 @@ export function OrderEntry({
 
         if (result.error) {
           toast.error(result.error);
-        } else if (result.data) {
+        } else if ("data" in result && result.data) {
           // Update Store
           assignCustomer(customer);
 
