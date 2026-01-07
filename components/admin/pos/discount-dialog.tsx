@@ -43,11 +43,11 @@ interface DiscountType {
   id: string;
   code: string;
   name: string;
-  description?: string;
+  description: string | null;
   percentage: number;
   requiresId: boolean;
   requiresApproval: boolean;
-  maxAmount?: number;
+  maxAmount: number | null;
 }
 
 interface DiscountDialogProps {

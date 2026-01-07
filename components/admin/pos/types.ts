@@ -73,17 +73,15 @@ export interface CurrentOrder {
   customerName?: string | null;
 }
 
-import { Decimal } from "@prisma/client/runtime/library";
+
 
 export interface DiscountType {
   id: string;
   name: string;
   description: string | null;
-  percentage: Decimal;
-  amount?: Decimal; 
+  percentage: number;
   code: string;
-  isActive: boolean;
   requiresId: boolean;
   requiresApproval: boolean;
-  maxAmount: Decimal | null;
+  maxAmount: number | null;
 }

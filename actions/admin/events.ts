@@ -82,7 +82,7 @@ export async function getMenuItems(propertyId: string) {
     try {
         const items = await db.menuItem.findMany({
             where: { propertyId, isAvailable: true },
-            orderBy: { category: 'asc' }
+            orderBy: { category: { name: 'asc' } }
         });
         return items;
     } catch (error) {

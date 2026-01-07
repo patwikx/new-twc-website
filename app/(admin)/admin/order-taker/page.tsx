@@ -261,10 +261,14 @@ export default async function OrderTakerPage({ searchParams }: OrderTakerPagePro
         },
         select: {
           id: true,
+          shortRef: true,
+          userId: true,
           guestFirstName: true,
           guestLastName: true,
           items: {
             select: {
+              checkIn: true,
+              checkOut: true,
               roomUnit: {
                 select: { number: true },
               },
@@ -275,9 +279,13 @@ export default async function OrderTakerPage({ searchParams }: OrderTakerPagePro
     : [];
 
   const checkedInGuests = checkedInBookings.map((b) => ({
-    id: b.id,
-    name: `${b.guestFirstName} ${b.guestLastName}`,
+    bookingId: b.id,
+    bookingRef: b.shortRef,
+    guestId: b.userId || b.id,
+    guestName: `${b.guestFirstName} ${b.guestLastName}`,
     roomNumber: b.items.find((i) => i.roomUnit)?.roomUnit?.number || "N/A",
+    checkIn: b.items[0]?.checkIn || new Date(),
+    checkOut: b.items[0]?.checkOut || new Date(),
   }));
 
   return (
