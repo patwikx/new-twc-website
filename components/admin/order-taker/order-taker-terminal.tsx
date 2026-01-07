@@ -52,6 +52,7 @@ import { CustomerAssignmentDialog } from "../pos/customer-assignment-dialog";
 import { searchCheckedInGuests, HotelGuest } from "@/lib/pos/guests";
 import { cn } from "@/lib/utils";
 import { usePOSStore } from "@/store/usePOSStore";
+import { usePOSSocket } from "@/lib/socket";
 
 // Types matching OrderEntry
 
@@ -77,6 +78,9 @@ export function OrderTakerTerminal({
 }: OrderTakerTerminalProps) {
   const router = useRouter();
   const { assignCustomer } = usePOSStore();
+  
+  // Socket.io for real-time sync
+  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll } = usePOSSocket(outletId);
 
   const [activeTab, setActiveTab] = React.useState<string>("tables");
   const [selectedTableId, setSelectedTableId] = React.useState<string | null>(null);
@@ -88,6 +92,39 @@ export function OrderTakerTerminal({
   const [itemNotes, setItemNotes] = React.useState("");
   const [isCustomerDialogOpen, setIsCustomerDialogOpen] = React.useState(false);
   const [checkedInGuests, setCheckedInGuests] = React.useState<HotelGuest[]>(initialGuests);
+
+  // Socket.io listeners for real-time sync
+  React.useEffect(() => {
+    const unsubTableUpdate = onTableUpdate((data) => {
+      console.log("[Socket] Table update received:", data);
+      router.refresh();
+    });
+
+    const unsubOrderUpdate = onOrderUpdate((data) => {
+      console.log("[Socket] Order update received:", data);
+      
+      // If the current order was paid or voided, clear local state and return to tables
+      if (currentOrder?.id === data.orderId && (data.action === "paid" || data.action === "voided")) {
+        console.log("[Socket] Current order was settled, clearing state");
+        setCurrentOrder(null);
+        setSelectedTableId(null);
+        setActiveTab("tables");
+      }
+      
+      router.refresh();
+    });
+
+    const unsubRefreshAll = onTablesRefreshAll(() => {
+      console.log("[Socket] Refresh all command received");
+      router.refresh();
+    });
+
+    return () => {
+      unsubTableUpdate();
+      unsubOrderUpdate();
+      unsubRefreshAll();
+    };
+  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, router, currentOrder?.id]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
@@ -191,10 +228,11 @@ export function OrderTakerTerminal({
             toast.error(result.error);
          } else if (result.data) {
              const newItem = result.data;
-             // Update local state
+             // Use order totals from backend for accurate VAT and service charge
+             const totals = result.orderTotals;
+             
              setCurrentOrder((prev) => {
                 if (!prev) return prev;
-                // Simple recalculation for UI responsiveness
                 const items = [...prev.items, {
                     id: newItem.id,
                     menuItemId: newItem.menuItemId,
@@ -207,16 +245,22 @@ export function OrderTakerTerminal({
                     status: newItem.status,
                     menuItemImage: newItem.menuItem.imageUrl
                 }];
-                const subtotal = items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
+                
                 return {
                     ...prev,
                     items,
-                    subtotal,
-                    // Rough total update, server refresh will fix exact tax/service
-                    total: subtotal + prev.taxAmount + prev.serviceCharge - prev.discountAmount
+                    subtotal: totals?.subtotal ?? items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0),
+                    taxAmount: totals?.taxAmount ?? prev.taxAmount,
+                    serviceCharge: totals?.serviceCharge ?? prev.serviceCharge,
+                    discountAmount: totals?.discountAmount ?? prev.discountAmount,
+                    total: totals?.total ?? (items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0) + prev.taxAmount + prev.serviceCharge - prev.discountAmount)
                 };
              });
              toast.success(`Added ${quantity}x ${pendingMenuItem.name}`);
+             
+             // Emit socket event for real-time sync
+             emitOrderUpdate(orderIdToUse, "item_added", { menuItem: pendingMenuItem.name, quantity });
+             
              router.refresh();
          }
       } else if (selectedTableId) {
@@ -244,7 +288,9 @@ export function OrderTakerTerminal({
             toast.error(result.error);
          } else if (result.data) {
              const newItem = result.data;
-             const subtotal = newItem.quantity * Number(newItem.unitPrice);
+             // Use order totals from addOrderItem for accurate VAT and service charge
+             const totals = result.orderTotals;
+             const subtotal = totals?.subtotal ?? (newItem.quantity * Number(newItem.unitPrice));
              
              setCurrentOrder({
                 id: orderResult.data.id,
@@ -266,12 +312,17 @@ export function OrderTakerTerminal({
                     menuItemImage: newItem.menuItem.imageUrl
                 }],
                 subtotal,
-                taxAmount: Number(orderResult.data.taxAmount) || 0,
-                serviceCharge: Number(orderResult.data.serviceCharge) || 0,
-                discountAmount: 0,
-                total: Number(orderResult.data.total) || subtotal,
+                taxAmount: totals?.taxAmount ?? 0,
+                serviceCharge: totals?.serviceCharge ?? 0,
+                discountAmount: totals?.discountAmount ?? 0,
+                total: totals?.total ?? subtotal,
              });
              toast.success(`Order created with ${quantity}x ${pendingMenuItem.name}`);
+             
+             // Emit socket events for real-time sync
+             emitTableUpdate(selectedTableId, "OCCUPIED", orderResult.data.id);
+             emitOrderUpdate(orderResult.data.id, "created", { orderNumber: orderResult.data.orderNumber });
+             
              router.refresh();
          }
       }
@@ -322,6 +373,9 @@ export function OrderTakerTerminal({
         });
       }
       
+      // Emit socket event for real-time sync
+      emitOrderUpdate(currentOrder.id, "quantity_changed", { itemId, quantity });
+      
       router.refresh();
     } catch (error) {
       console.error("Quantity change error:", error);
@@ -355,6 +409,9 @@ export function OrderTakerTerminal({
 
       router.refresh();
       toast.success("Item removed");
+      
+      // Emit socket event for real-time sync
+      emitOrderUpdate(currentOrder.id, "item_removed", { itemId });
     } catch (error) {
       console.error("Remove item error:", error);
       toast.error("Failed to remove item");
@@ -388,6 +445,10 @@ export function OrderTakerTerminal({
       });
 
       toast.success("Order sent to kitchen!");
+      
+      // Emit socket event for real-time sync
+      emitOrderUpdate(currentOrder.id, "sent_to_kitchen");
+      
       router.refresh();
     } catch (error) {
       console.error("Send to kitchen error:", error);
@@ -414,6 +475,9 @@ export function OrderTakerTerminal({
              
                 // Update local state with customer name
                 setCurrentOrder(prev => prev ? { ...prev, customerName: customer.name } : null);
+                
+                // Emit socket event for real-time sync
+                emitOrderUpdate(currentOrder.id, "customer_assigned", { customerName: customer.name });
 
                 setIsCustomerDialogOpen(false);
                 router.refresh();
@@ -477,6 +541,10 @@ export function OrderTakerTerminal({
             total: 0,
             customerName: customer.name,
           });
+          
+          // Emit socket events for real-time sync
+          emitTableUpdate(selectedTableId, "OCCUPIED", result.data.id);
+          emitOrderUpdate(result.data.id, "created", { orderNumber: result.data.orderNumber, customerName: customer.name });
           
           toast.success(`Order created for Table`);
           setIsCustomerDialogOpen(false);

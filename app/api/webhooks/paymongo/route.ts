@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import crypto from 'crypto';
 import { sendBookingConfirmationEmail } from '@/lib/mail';
 import { generateToken } from '@/lib/booking/lookup-token';
+import { emitBookingUpdate } from '@/lib/socket-emit';
 
 import { 
   WebhookEvent, 
@@ -322,6 +323,11 @@ async function handleCheckoutSessionSuccess(event: WebhookEvent, webhookEventId:
     
     console.log(`✅ Payment confirmed for booking ${booking.shortRef}`);
 
+    // Emit socket event to notify confirmation page in real-time
+    const finalStatus = amountDue <= 0 ? 'CONFIRMED' : 'PENDING';
+    const finalPaymentStatus = amountDue <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+    await emitBookingUpdate(bookingId, finalStatus, finalPaymentStatus);
+
 
     // Send confirmation email to guest
     if (amountDue <= 0) {
@@ -473,6 +479,11 @@ async function handlePaymentIntentSuccess(event: WebhookEvent, webhookEventId: s
           status: amountDue <= 0 ? 'CONFIRMED' : 'PENDING'
         }
       });
+
+      // Emit socket event to notify confirmation page
+      const finalStatus = amountDue <= 0 ? 'CONFIRMED' : 'PENDING';
+      const finalPaymentStatus = amountDue <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+      await emitBookingUpdate(payment.bookingId, finalStatus, finalPaymentStatus);
     }
     
   } catch (error) {

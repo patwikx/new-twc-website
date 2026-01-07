@@ -599,6 +599,18 @@ export async function addOrderItem(data: AddOrderItemInput) {
     // Recalculate order totals
     await recalculateOrderTotals(data.orderId);
 
+    // Fetch updated order totals to return to frontend
+    const updatedOrder = await db.pOSOrder.findUnique({
+      where: { id: data.orderId },
+      select: {
+        subtotal: true,
+        taxAmount: true,
+        serviceCharge: true,
+        discountAmount: true,
+        total: true,
+      },
+    });
+
     // Update menu item availability in real-time
     // This recalculates available servings based on current stock
     const kitchenWarehouse = await db.warehouse.findFirst({
@@ -615,7 +627,19 @@ export async function addOrderItem(data: AddOrderItemInput) {
 
     revalidatePath("/admin/pos");
     revalidatePath(`/admin/pos/orders/${data.orderId}`);
-    return { success: true, data: serializeOrderItem(orderItem) };
+    
+    // Return item data AND updated order totals
+    return { 
+      success: true, 
+      data: serializeOrderItem(orderItem),
+      orderTotals: updatedOrder ? {
+        subtotal: Number(updatedOrder.subtotal),
+        taxAmount: Number(updatedOrder.taxAmount),
+        serviceCharge: Number(updatedOrder.serviceCharge),
+        discountAmount: Number(updatedOrder.discountAmount),
+        total: Number(updatedOrder.total),
+      } : undefined
+    };
   } catch (error) {
     console.error("Add Order Item Error:", error);
     return { error: "Failed to add item to order" };
