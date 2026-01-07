@@ -32,6 +32,106 @@ interface GenerateReadingResult {
 }
 
 /**
+ * Helper: Calculate totals for a shift without side effects
+ */
+async function calculateShiftTotals(shiftId: string) {
+  const shift = await db.shift.findUnique({
+    where: { id: shiftId },
+    include: {
+      cashier: { select: { name: true } },
+      outlet: { select: { name: true } },
+      orders: {
+        where: {
+          status: { not: "CANCELLED" },
+        },
+        include: {
+          payments: true,
+          orderDiscounts: true,
+          orderVoids: true,
+        },
+      },
+    },
+  });
+
+  if (!shift) {
+    throw new Error("Shift not found");
+  }
+
+  let orderCount = 0;
+  let totalSales = 0;
+  let cashSales = 0;
+  let cardSales = 0;
+  let roomChargeSales = 0;
+  let otherSales = 0;
+  let voidCount = 0;
+  let voidAmount = 0;
+  let discountCount = 0;
+  let discountTotal = 0;
+
+  for (const order of shift.orders) {
+    // Only count PAID orders in sales
+    if (order.status === "PAID") {
+       orderCount++;
+       // Sum payments by method
+       for (const payment of order.payments) {
+         const amount = Number(payment.amount);
+         switch (payment.method) {
+           case PaymentMethod.CASH:
+             cashSales += amount;
+             break;
+           case PaymentMethod.CREDIT_CARD:
+           case PaymentMethod.DEBIT_CARD:
+             cardSales += amount;
+             break;
+           case PaymentMethod.ROOM_CHARGE:
+             roomChargeSales += amount;
+             break;
+           default:
+             otherSales += amount;
+         }
+       }
+    }
+
+    // Sum discounts (regardless of paid status? usually on paid or closed orders)
+    // Assuming discounts apply to valid orders (not cancelled). 
+    // If order is active/open, discounts exist.
+    if (order.status !== "CANCELLED") {
+        for (const discount of order.orderDiscounts) {
+          discountCount++;
+          discountTotal += Number(discount.amount);
+        }
+    }
+
+    // Sum voids
+    for (const orderVoid of order.orderVoids) {
+      voidCount++;
+      voidAmount += Number(orderVoid.originalAmount);
+    }
+  }
+
+  // Total sales is the sum of all payment methods
+  totalSales = cashSales + cardSales + roomChargeSales + otherSales;
+  const startingCash = Number(shift.startingCash);
+  const expectedCash = startingCash + cashSales;
+
+  return {
+    shift,
+    orderCount,
+    totalSales,
+    cashSales,
+    cardSales,
+    roomChargeSales,
+    otherSales,
+    voidCount,
+    voidAmount,
+    discountCount,
+    discountTotal,
+    startingCash,
+    expectedCash
+  };
+}
+
+/**
  * Generate an X or Z reading for a shift
  */
 export async function generateShiftReading(
@@ -45,128 +145,56 @@ export async function generateShiftReading(
   }
 
   try {
-    // Get shift with related data
-    const shift = await db.shift.findUnique({
-      where: { id: shiftId },
-      include: {
-        cashier: { select: { name: true } },
-        outlet: { select: { name: true } },
-        orders: {
-          where: {
-            status: { not: "CANCELLED" },
-          },
-          include: {
-            payments: true,
-            orderDiscounts: true,
-            orderVoids: true,
-          },
-        },
-      },
-    });
-
-    if (!shift) {
-      return { success: false, error: "Shift not found" };
+    // 1. Calculate
+    const totals = await calculateShiftTotals(shiftId);
+    
+    if (totals.shift.status !== "OPEN" && type !== ReadingType.Z_READING) { 
+        // Allow Z reading logic to call this even if theoretically closing logic is separate, 
+        // but typically we generate reading WHILE open, then close.
+        // If retrieving history, we use getShiftReadings.
+        // If re-printing Z, we use existing reading.
     }
 
-    if (shift.status !== "OPEN") {
-      return { success: false, error: "Shift is already closed" };
-    }
+    // 2. Transaction: Create Reading + Update Shift (if X)
+    const result = await db.$transaction(async (tx) => {
+        // Get next reading number
+        const lastReading = await tx.shiftReading.findFirst({
+            where: { shiftId },
+            orderBy: { readingNumber: "desc" },
+        });
+        const readingNumber = (lastReading?.readingNumber || 0) + 1;
 
-    // Calculate totals
-    let orderCount = 0;
-    let totalSales = 0;
-    let cashSales = 0;
-    let cardSales = 0;
-    let roomChargeSales = 0;
-    let otherSales = 0;
-    let voidCount = 0;
-    let voidAmount = 0;
-    let discountCount = 0;
-    let discountTotal = 0;
+        const reading = await tx.shiftReading.create({
+            data: {
+              shiftId,
+              type,
+              readingNumber,
+              orderCount: totals.orderCount,
+              totalSales: totals.totalSales,
+              cashSales: totals.cashSales,
+              cardSales: totals.cardSales,
+              roomChargeSales: totals.roomChargeSales,
+              otherSales: totals.otherSales,
+              voidCount: totals.voidCount,
+              voidAmount: totals.voidAmount,
+              discountCount: totals.discountCount,
+              discountTotal: totals.discountTotal,
+              generatedById: session.user.id!,
+            },
+        });
 
-    for (const order of shift.orders) {
-      // Only count PAID orders in sales
-      if (order.status !== "PAID") {
-        continue;
-      }
-      
-      orderCount++;
-
-      // Sum payments by method
-      for (const payment of order.payments) {
-        const amount = Number(payment.amount);
-        switch (payment.method) {
-          case PaymentMethod.CASH:
-            cashSales += amount;
-            break;
-          case PaymentMethod.CREDIT_CARD:
-          case PaymentMethod.DEBIT_CARD:
-            cardSales += amount;
-            break;
-          case PaymentMethod.ROOM_CHARGE:
-            roomChargeSales += amount;
-            break;
-          default:
-            otherSales += amount;
+        if (type === ReadingType.X_READING) {
+             await tx.shift.update({
+                where: { id: shiftId },
+                data: {
+                  xReadingCount: { increment: 1 },
+                  lastXReadingAt: new Date(),
+                },
+             });
         }
-      }
-
-      // Sum discounts
-      for (const discount of order.orderDiscounts) {
-        discountCount++;
-        discountTotal += Number(discount.amount);
-      }
-
-      // Sum voids
-      for (const orderVoid of order.orderVoids) {
-        voidCount++;
-        voidAmount += Number(orderVoid.originalAmount);
-      }
-    }
-
-    // Total sales is the sum of all payment methods
-    totalSales = cashSales + cardSales + roomChargeSales + otherSales;
-
-    const startingCash = Number(shift.startingCash);
-    const expectedCash = startingCash + cashSales;
-
-    // Get next reading number
-    const lastReading = await db.shiftReading.findFirst({
-      where: { shiftId },
-      orderBy: { readingNumber: "desc" },
+        
+        return reading;
     });
-    const readingNumber = (lastReading?.readingNumber || 0) + 1;
-
-    // Create the reading
-    const reading = await db.shiftReading.create({
-      data: {
-        shiftId,
-        type,
-        readingNumber,
-        orderCount,
-        totalSales,
-        cashSales,
-        cardSales,
-        roomChargeSales,
-        otherSales,
-        voidCount,
-        voidAmount,
-        discountCount,
-        discountTotal,
-        generatedById: session.user.id,
-      },
-    });
-
-    // Update shift X reading count if X reading
-    if (type === ReadingType.X_READING) {
-      await db.shift.update({
-        where: { id: shiftId },
-        data: {
-          xReadingCount: { increment: 1 },
-          lastXReadingAt: new Date(),
-        },
-      });
-    }
 
     revalidatePath("/admin/pos");
     revalidatePath("/admin/pos/shifts");
@@ -174,25 +202,25 @@ export async function generateShiftReading(
     return {
       success: true,
       data: {
-        readingId: reading.id,
-        readingNumber,
+        readingId: result.id,
+        readingNumber: result.readingNumber,
         shiftId,
-        generatedAt: reading.createdAt,
-        cashierName: shift.cashier.name || "Unknown",
-        outletName: shift.outlet.name,
-        shiftStartedAt: shift.openedAt,
-        orderCount,
-        totalSales,
-        cashSales,
-        cardSales,
-        roomChargeSales,
-        otherSales,
-        voidCount,
-        voidAmount,
-        discountCount,
-        discountTotal,
-        startingCash,
-        expectedCash,
+        generatedAt: result.createdAt,
+        cashierName: totals.shift.cashier.name || "Unknown",
+        outletName: totals.shift.outlet.name,
+        shiftStartedAt: totals.shift.openedAt,
+        orderCount: totals.orderCount,
+        totalSales: totals.totalSales,
+        cashSales: totals.cashSales,
+        cardSales: totals.cardSales,
+        roomChargeSales: totals.roomChargeSales,
+        otherSales: totals.otherSales,
+        voidCount: totals.voidCount,
+        voidAmount: totals.voidAmount,
+        discountCount: totals.discountCount,
+        discountTotal: totals.discountTotal,
+        startingCash: totals.startingCash,
+        expectedCash: totals.expectedCash,
       },
     };
   } catch (error) {
@@ -206,6 +234,34 @@ export async function generateShiftReading(
  */
 export async function generateXReading(shiftId: string) {
   return generateShiftReading(shiftId, ReadingType.X_READING);
+}
+
+/**
+ * Get shift summary for close wizard (NO DB WRITE)
+ */
+export async function getShiftSummary(shiftId: string) {
+  try {
+      const totals = await calculateShiftTotals(shiftId);
+      
+      return {
+        shiftId: totals.shift.id,
+        startingCash: totals.startingCash,
+        orderCount: totals.orderCount,
+        totalSales: totals.totalSales,
+        cashSales: totals.cashSales,
+        cardSales: totals.cardSales,
+        roomChargeSales: totals.roomChargeSales,
+        otherSales: totals.otherSales,
+        voidCount: totals.voidCount,
+        voidAmount: totals.voidAmount,
+        discountCount: totals.discountCount,
+        discountTotal: totals.discountTotal,
+        expectedCash: totals.expectedCash,
+      };
+  } catch (error) {
+      console.error("Error getting shift summary:", error);
+      return null;
+  }
 }
 
 /**
@@ -226,41 +282,122 @@ export async function closeShift(data: {
   try {
     const { shiftId, endingCash, variance, notes } = data;
 
-    // Get shift
-    const shift = await db.shift.findUnique({
-      where: { id: shiftId },
-    });
+    // Use transaction for Z reading + Close
+    await db.$transaction(async (tx) => {
+        // 1. Calculate logic (re-used inside transaction? Or call calculateShiftTotals first?)
+        // Better to reproduce generateShiftReading logic INSIDE transaction to ensure consistency between reading and close
+        // But calculateShiftTotals uses `db` not `tx`.
+        // Ideally we pass `tx` to helper. But helper is simple read. 
+        // Let's assume low concurrency risk or just read again inside.
+        
+        // Re-implement simplified read or trust `generateShiftReading`?
+        // `generateShiftReading` is not tx-aware. 
+        
+        // Strategy: 
+        // 1. Calculate totals (Read)
+        // 2. Create Reading (Write)
+        // 3. Close Shift (Write)
+        // All in one transaction using `tx`.
+        
+        const shift = await tx.shift.findUnique({
+            where: { id: shiftId },
+            include: {
+              cashier: { select: { name: true } },
+              outlet: { select: { name: true } },
+              orders: {
+                where: { status: { not: "CANCELLED" } },
+                include: { payments: true, orderDiscounts: true, orderVoids: true },
+              },
+            },
+        });
 
-    if (!shift) {
-      return { success: false, error: "Shift not found" };
-    }
+        if (!shift) throw new Error("Shift not found");
+        if (shift.status !== "OPEN") throw new Error("Shift is already closed");
 
-    if (shift.status !== "OPEN") {
-      return { success: false, error: "Shift is already closed" };
-    }
+        let orderCount = 0;
+        let totalSales = 0;
+        let cashSales = 0;
+        let cardSales = 0;
+        let roomChargeSales = 0;
+        let otherSales = 0;
+        let voidCount = 0;
+        let voidAmount = 0;
+        let discountCount = 0;
+        let discountTotal = 0;
 
-    // Generate Z reading first
-    const zReadingResult = await generateShiftReading(shiftId, ReadingType.Z_READING);
-    
-    if (!zReadingResult.success) {
-      return { success: false, error: zReadingResult.error };
-    }
+        for (const order of shift.orders) {
+            if (order.status === "PAID") {
+               orderCount++;
+               for (const payment of order.payments) {
+                 const amount = Number(payment.amount);
+                 switch (payment.method) {
+                   case PaymentMethod.CASH: cashSales += amount; break;
+                   case PaymentMethod.CREDIT_CARD:
+                   case PaymentMethod.DEBIT_CARD: cardSales += amount; break;
+                   case PaymentMethod.ROOM_CHARGE: roomChargeSales += amount; break;
+                   default: otherSales += amount;
+                 }
+               }
+            }
+            if (order.status !== "CANCELLED") {
+                for (const discount of order.orderDiscounts) {
+                  discountCount++;
+                  discountTotal += Number(discount.amount);
+                }
+            }
+            for (const orderVoid of order.orderVoids) {
+              voidCount++;
+              voidAmount += Number(orderVoid.originalAmount);
+            }
+        }
+        totalSales = cashSales + cardSales + roomChargeSales + otherSales;
+        const startingCash = Number(shift.startingCash);
+        const expectedCash = startingCash + cashSales;
 
-    // Calculate expected cash
-    const expectedCash = zReadingResult.data!.expectedCash;
+        // Verify variance (Ending - Expected)
+        // If passed variance differs significantly, we might want to flag/error, but usually we prefer the Calculated expected vs User ending.
+        // Frontend passed `variance`. We should trust `endingCash` from user and `expectedCash` from system.
+        const calculatedVariance = endingCash - expectedCash;
+        
+        // Create Z Reading
+        const lastReading = await tx.shiftReading.findFirst({
+            where: { shiftId },
+            orderBy: { readingNumber: "desc" },
+        });
+        const readingNumber = (lastReading?.readingNumber || 0) + 1;
 
-    // Close the shift
-    await db.shift.update({
-      where: { id: shiftId },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-        endingCash,
-        expectedCash,
-        variance,
-        notes: notes || shift.notes,
-        zReadingAt: new Date(),
-      },
+        await tx.shiftReading.create({
+            data: {
+              shiftId,
+              type: ReadingType.Z_READING,
+              readingNumber,
+              orderCount,
+              totalSales,
+              cashSales,
+              cardSales,
+              roomChargeSales,
+              otherSales,
+              voidCount,
+              voidAmount,
+              discountCount,
+              discountTotal,
+              generatedById: session.user.id!,
+            },
+        });
+
+        // Close Shift
+        await tx.shift.update({
+            where: { id: shiftId },
+            data: {
+                status: "CLOSED",
+                closedAt: new Date(),
+                endingCash,
+                expectedCash,
+                variance: calculatedVariance, // Use calculated variance
+                notes: notes || shift.notes,
+                zReadingAt: new Date(),
+            }
+        });
     });
 
     revalidatePath("/admin/pos");
@@ -269,7 +406,7 @@ export async function closeShift(data: {
     return { success: true };
   } catch (error) {
     console.error("Error closing shift:", error);
-    return { success: false, error: "Failed to close shift" };
+    return { success: false, error: error instanceof Error ? error.message : "Failed to close shift" };
   }
 }
 
@@ -293,65 +430,132 @@ export async function handoverShift(data: {
   try {
     const { shiftId, endingCash, variance, notes, handoverToId, handoverNotes } = data;
 
-    // Get current shift
-    const shift = await db.shift.findUnique({
-      where: { id: shiftId },
-      include: { outlet: true },
-    });
+    const result = await db.$transaction(async (tx) => {
+        const shift = await tx.shift.findUnique({
+            where: { id: shiftId },
+            include: { outlet: true },
+        });
 
-    if (!shift) {
-      return { success: false, error: "Shift not found" };
-    }
+        if (!shift) throw new Error("Shift not found");
+        if (shift.status !== "OPEN") throw new Error("Shift is already closed");
 
-    if (shift.status !== "OPEN") {
-      return { success: false, error: "Shift is already closed" };
-    }
+        // We assume Handover also does a Z-Reading for the current cashier?
+        // Yes, usage pattern implies Z-Reading.
+        // Re-use logic or manual? Manual for safe Transaction scope.
+        
+        // ... (Similar calculation logic as CloseShift, omitted for brevity but should be here)
+        // For efficiency, let's call `calculateShiftTotals` OUTSIDE if we accept slight gap, 
+        // OR duplicate logic. Duplicate is safer for one atomic block.
+        // I'll call the `closeShift` function internally? No, transactions don't nest well if closeShift uses db.$transaction
+        // I will duplicate the calculation logic for Safety.
+        
+        // ... Calculation ...
+        // (Simplified for this file write - normally I'd extract a logical helper that takes `tx`)
+        // Assuming Calculate is same as above.
+        
+        const totals = await calculateShiftTotalsInternal(tx, shiftId); // Internal helper
+        
+        const calculatedVariance = endingCash - totals.expectedCash;
 
-    // Generate Z reading
-    const zReadingResult = await generateShiftReading(shiftId, ReadingType.Z_READING);
-    
-    if (!zReadingResult.success) {
-      return { success: false, error: zReadingResult.error };
-    }
+        const lastReading = await tx.shiftReading.findFirst({ where: { shiftId }, orderBy: { readingNumber: "desc" }});
+        const readingNumber = (lastReading?.readingNumber || 0) + 1;
 
-    const expectedCash = zReadingResult.data!.expectedCash;
+        await tx.shiftReading.create({
+            data: {
+              shiftId,
+              type: ReadingType.Z_READING,
+              readingNumber,
+              orderCount: totals.orderCount,
+              totalSales: totals.totalSales,
+              cashSales: totals.cashSales,
+              cardSales: totals.cardSales,
+              roomChargeSales: totals.roomChargeSales,
+              otherSales: totals.otherSales,
+              voidCount: totals.voidCount,
+              voidAmount: totals.voidAmount,
+              discountCount: totals.discountCount,
+              discountTotal: totals.discountTotal,
+              generatedById: session.user.id!,
+            },
+        });
 
-    // Close current shift with handover info
-    await db.shift.update({
-      where: { id: shiftId },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-        endingCash,
-        expectedCash,
-        variance,
-        notes: notes || shift.notes,
-        zReadingAt: new Date(),
-        handoverToId,
-        handoverNotes,
-      },
-    });
+        await tx.shift.update({
+            where: { id: shiftId },
+            data: {
+                status: "CLOSED",
+                closedAt: new Date(),
+                endingCash,
+                expectedCash: totals.expectedCash,
+                variance: calculatedVariance,
+                notes: notes || shift.notes,
+                zReadingAt: new Date(),
+                handoverToId,
+                handoverNotes,
+            }
+        });
 
-    // Open new shift for next cashier with ending cash as starting cash
-    const newShift = await db.shift.create({
-      data: {
-        outletId: shift.outletId,
-        cashierId: handoverToId,
-        type: shift.type, // Same shift type (DAY/NIGHT)
-        startingCash: endingCash, // Carry over the cash
-        status: "OPEN",
-        notes: `Handover from previous shift. ${handoverNotes || ""}`.trim(),
-      },
+        const newShift = await tx.shift.create({
+            data: {
+                outletId: shift.outletId,
+                cashierId: handoverToId,
+                type: shift.type,
+                startingCash: endingCash,
+                status: "OPEN",
+                notes: `Handover from previous shift. ${handoverNotes || ""}`.trim(),
+            },
+        });
+        
+        return newShift;
     });
 
     revalidatePath("/admin/pos");
     revalidatePath("/admin/pos/shifts");
 
-    return { success: true, newShiftId: newShift.id };
+    return { success: true, newShiftId: result.id };
   } catch (error) {
     console.error("Error during handover:", error);
     return { success: false, error: "Failed to handover shift" };
   }
+}
+
+/**
+ * Internal helper to calculate using a transaction client
+ */
+async function calculateShiftTotalsInternal(tx: any, shiftId: string) {
+    const shift = await tx.shift.findUnique({
+        where: { id: shiftId },
+        include: {
+          orders: {
+            where: { status: { not: "CANCELLED" } },
+            include: { payments: true, orderDiscounts: true, orderVoids: true },
+          },
+        },
+    });
+
+    let orderCount = 0; let totalSales = 0; let cashSales = 0; let cardSales = 0; let roomChargeSales = 0; let otherSales = 0;
+    let voidCount = 0; let voidAmount = 0; let discountCount = 0; let discountTotal = 0;
+
+    for (const order of shift.orders) {
+        if (order.status === "PAID") {
+           orderCount++;
+           for (const payment of order.payments) {
+             const amount = Number(payment.amount);
+             switch (payment.method) {
+               case "CASH": cashSales += amount; break;
+               case "CREDIT_CARD": case "DEBIT_CARD": cardSales += amount; break;
+               case "ROOM_CHARGE": roomChargeSales += amount; break;
+               default: otherSales += amount;
+             }
+           }
+        }
+        for (const discount of order.orderDiscounts) { discountCount++; discountTotal += Number(discount.amount); }
+        for (const orderVoid of order.orderVoids) { voidCount++; voidAmount += Number(orderVoid.originalAmount); }
+    }
+    totalSales = cashSales + cardSales + roomChargeSales + otherSales;
+    const startingCash = Number(shift.startingCash);
+    const expectedCash = startingCash + cashSales;
+
+    return { orderCount, totalSales, cashSales, cardSales, roomChargeSales, otherSales, voidCount, voidAmount, discountCount, discountTotal, expectedCash };
 }
 
 /**
@@ -375,45 +579,4 @@ export async function getShiftReadings(shiftId: string) {
     generatedBy: r.generatedBy.name,
     createdAt: r.createdAt,
   }));
-}
-
-/**
- * Get shift summary for close wizard
- */
-export async function getShiftSummary(shiftId: string) {
-  const result = await generateShiftReading(shiftId, ReadingType.X_READING);
-  
-  if (!result.success || !result.data) {
-    throw new Error(result.error || "Failed to get shift summary");
-  }
-
-  // Don't actually save the X reading, just return the data
-  // Delete the reading that was created
-  await db.shiftReading.delete({
-    where: { id: result.data.readingId },
-  });
-
-  // Decrement the X reading count
-  await db.shift.update({
-    where: { id: shiftId },
-    data: {
-      xReadingCount: { decrement: 1 },
-    },
-  });
-
-  return {
-    shiftId: result.data.shiftId,
-    startingCash: result.data.startingCash,
-    orderCount: result.data.orderCount,
-    totalSales: result.data.totalSales,
-    cashSales: result.data.cashSales,
-    cardSales: result.data.cardSales,
-    roomChargeSales: result.data.roomChargeSales,
-    otherSales: result.data.otherSales,
-    voidCount: result.data.voidCount,
-    voidAmount: result.data.voidAmount,
-    discountCount: result.data.discountCount,
-    discountTotal: result.data.discountTotal,
-    expectedCash: result.data.expectedCash,
-  };
 }

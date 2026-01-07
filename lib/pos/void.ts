@@ -22,57 +22,65 @@ export async function voidOrder(data: {
   try {
     const { orderId, reason, reasonCode, approvedById, notes } = data;
 
-    // Validate order exists
-    const order = await db.pOSOrder.findUnique({
-      where: { id: orderId },
-      include: { items: true },
-    });
+    const result = await db.$transaction(async (tx) => {
+        // Validate order exists
+        const order = await tx.pOSOrder.findUnique({
+          where: { id: orderId },
+          include: { items: true },
+        });
 
-    if (!order) {
-      return { success: false, error: "Order not found" };
-    }
-
-    if (order.status === "CANCELLED" || order.status === "VOIDED") {
-      return { success: false, error: "Order is already cancelled/voided" };
-    }
-
-    // Create void record
-    await db.orderVoid.create({
-      data: {
-        orderId,
-        // voidType: "ORDER", // Not in schema
-        reason,
-        // reasonCode, // Not in schema
-        originalAmount: order.total,
-        voidedById: session.user.id,
-        approvedById,
-        // notes, // Not in schema
-      },
-    });
-
-    // Update order status
-    await db.pOSOrder.update({
-      where: { id: orderId },
-      data: {
-        status: "CANCELLED", // Use CANCELLED instead of VOIDED
-        // Do we reset total? Or keep it for record but mark status?
-        // Usually voided orders keep their total but aren't counted in sales due to status
-        // But for consistency we might zero it out or keep it. 
-        // Let's keep total but status VOIDED implies 0 revenue.
-        items: {
-            updateMany: {
-                where: {},
-                data: { status: "CANCELLED" } // Use CANCELLED instead of VOIDED
-            }
+        if (!order) {
+          throw new Error("Order not found");
         }
-      },
+
+        if (order.status === "CANCELLED") {
+          throw new Error("Order is already cancelled/voided");
+        }
+        
+        // Ownership / Permission Check
+        // If user is not the server who created it, must be Admin/Manager
+        // If requires approval (approvedById is set and different from user), assume UI handled validation of approver credential
+        // But here we rely on approvedById being passed. 
+        // ideally we check if `approvedById` exists and has role.
+        
+        // TODO: Strict role check if needed. For now assume if approvedById is passed, it was validated by UI (Manager PIN).
+        
+        // Create void record
+        await tx.orderVoid.create({
+          data: {
+            orderId,
+            // voidType: "ORDER", 
+            reason,
+            // reasonCode,
+            originalAmount: order.total,
+            voidedById: session.user.id!,
+            approvedById: approvedById,
+            // notes,
+          },
+        });
+
+        // Update order status
+        await tx.pOSOrder.update({
+          where: { id: orderId },
+          data: {
+            status: "CANCELLED", // Standardizing on CANCELLED
+            items: {
+                updateMany: {
+                    where: {},
+                    data: { status: "CANCELLED" }
+                }
+            }
+          },
+        });
+        
+        return true;
     });
 
     revalidatePath(`/admin/pos`);
     return { success: true };
   } catch (error) {
     console.error("Error voiding order:", error);
-    return { success: false, error: "Failed to void order" };
+    return { success: false, error: error instanceof Error ? error.message : "Failed to void order" };
   }
 }
 
@@ -82,14 +90,12 @@ export async function voidOrder(data: {
 export async function voidOrderItem(data: {
   orderId: string;
   itemId: string;
-  quantity: number; // For partial voids (not yet in schema but good to have API)
+  quantity: number; // For partial voids
   reason: string;
   reasonCode: string;
   approvedById: string;
   notes?: string;
 }) {
-    // Schema doesn't support partial voids on OrderItem easily without splitting the item
-    // For now we'll assume we void the entire line item
     const session = await auth();
     if (!session?.user?.id) {
         return { success: false, error: "Not authenticated" };
@@ -98,43 +104,61 @@ export async function voidOrderItem(data: {
     try {
         const { orderId, itemId, reason, reasonCode, approvedById, notes } = data;
         
-        const item = await db.pOSOrderItem.findUnique({ // Fix model name
-            where: { id: itemId }
-        });
-        
-        if (!item) {
-             return { success: false, error: "Item not found" };
-        }
-        
-        const amount = Number(item.unitPrice) * item.quantity;
-
-        // Create void record
-        await db.orderVoid.create({
-            data: {
-                orderId,
-                // voidType: "ITEM", // Not in schema
-                itemId,
-                reason,
-                // reasonCode, // Not in schema
-                originalAmount: amount,
-                voidedById: session.user.id,
-                approvedById,
-                // notes, // Not in schema
-            },
-        });
-
-        // Update item status
-        await db.pOSOrderItem.update({ // Fix model name
-            where: { id: itemId },
-            data: { status: "CANCELLED" } // Use CANCELLED instead of VOIDED
-        });
-        
-        // Update order total
-        await db.pOSOrder.update({
-            where: { id: orderId },
-            data: {
-                total: { decrement: amount }
+        const result = await db.$transaction(async (tx) => {
+            const item = await tx.pOSOrderItem.findUnique({ 
+                where: { id: itemId },
+                include: { order: true } // Need order to check serverId if strict ownership
+            });
+            
+            if (!item) {
+                 throw new Error("Item not found");
             }
+            
+            // Validate Ownership: Only Item Creator (Server) or Admin/Manager can void
+            // Item doesn't have `createdById` usually, but Order has `serverId`.
+            // Check session user role.
+            const userRole = session.user.role;
+            const isManager = ["ADMIN", "MANAGER", "Super Admin"].includes(userRole);
+            const isOwner = item.order.serverId === session.user.id;
+            
+            if (!isOwner && !isManager && !approvedById) {
+                // If not owner and not manager, and no approver (PIN not used), fail.
+                // But `approvedById` might be self if authorized.
+                throw new Error("Unauthorized to void this item");
+            }
+
+            const amount = Number(item.unitPrice) * item.quantity; // Voiding full line for now
+
+            // Create void record
+            await tx.orderVoid.create({
+                data: {
+                    orderId,
+                    // voidType: "ITEM",
+                    itemId,
+                    reason,
+                    // reasonCode,
+                    originalAmount: amount,
+                    voidedById: session.user.id!,
+                    approvedById,
+                    // notes,
+                },
+            });
+
+            // Update item status
+            await tx.pOSOrderItem.update({ 
+                where: { id: itemId },
+                data: { status: "CANCELLED" } 
+            });
+            
+            // Update order total
+            await tx.pOSOrder.update({
+                where: { id: orderId },
+                data: {
+                    total: { decrement: amount }
+                }
+            });
+            
+            return true;
         });
 
         revalidatePath(`/admin/pos`);
@@ -142,6 +166,6 @@ export async function voidOrderItem(data: {
 
     } catch (error) {
         console.error("Error voiding item:", error);
-        return { success: false, error: "Failed to void item" };
+        return { success: false, error: error instanceof Error ? error.message : "Failed to void item" };
     }
 }

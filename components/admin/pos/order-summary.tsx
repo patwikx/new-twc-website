@@ -3,35 +3,11 @@
 import * as React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Minus, Plus, Trash2, Send, CreditCard, Loader2, Sparkles, Ban } from "lucide-react";
+import { Minus, Plus, Trash2, Send, Loader2, Sparkles, Ban } from "lucide-react";
 import { POSOrderStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
-
-interface OrderItem {
-  id: string;
-  menuItemId: string;
-  menuItemName: string;
-  menuItemCategory: string;
-  quantity: number;
-  unitPrice: number;
-  modifiers: string | null;
-  notes: string | null;
-  status: string;
-  menuItemImage?: string | null;
-}
+import { OrderItem } from "./types";
 
 interface OrderSummaryProps {
   orderId: string | null;
@@ -49,10 +25,10 @@ interface OrderSummaryProps {
   onQuantityChange: (itemId: string, quantity: number) => void;
   onRemoveItem: (itemId: string) => void;
   onSendToKitchen: () => void;
-  onPayment: () => void;
-  onDiscount?: () => void;
-  onVoidOrder?: () => void;
-  onVoidItem?: (itemId: string, itemName: string, amount: number) => void;
+  onPayment?: () => void; // Optional for Order Taker
+  onDiscount?: () => void; // Optional for Order Taker
+  onVoidOrder?: () => void; // Optional for Order Taker
+  onVoidItem?: (itemId: string, itemName: string, amount: number) => void; // Optional for Order Taker
   onAssignCustomer?: () => void;
   onSaveDraft?: () => void;
   isLoading?: boolean;
@@ -231,25 +207,29 @@ export function OrderSummary({
              {/* Secondary Actions */}
             {canInteract && (onDiscount || onVoidOrder) && (
             <div className="grid grid-cols-2 gap-3">
+                    {onDiscount && (
                     <Button 
                         variant="ghost" 
                         size="sm"
                         className="h-10 bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white border border-white/5 rounded-md"
                         onClick={onDiscount}
-                        disabled={isLoading || !onDiscount || items.length === 0}
+                        disabled={isLoading || items.length === 0}
                     >
                         <Sparkles className="h-4 w-4 mr-2 opacity-50" />
                         Discount
                     </Button>
+                    )}
+                    {onVoidOrder && (
                     <Button 
                         variant="ghost" 
                         size="sm"
                         className="h-10 bg-red-500/5 hover:bg-red-500/10 text-red-400 border border-red-500/10 rounded-md"
                         onClick={onVoidOrder}
-                        disabled={isLoading || !onVoidOrder || items.length === 0}
+                        disabled={isLoading || items.length === 0}
                     >
                         Void Order
                     </Button>
+                    )}
             </div>
             )}
 
@@ -279,7 +259,7 @@ export function OrderSummary({
                 </div>
             )}
             
-            {canPay && pendingItems.length === 0 && (
+            {canPay && onPayment && pendingItems.length === 0 && (
                 <Button
                     size="lg"
                     className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-md"

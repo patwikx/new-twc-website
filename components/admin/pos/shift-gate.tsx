@@ -175,13 +175,19 @@ export function ShiftGate({
   const handleCloseShift = async (data: any) => {
     if (!activeShift) return;
     
-    await closeShift({
+    const result = await closeShift({
       shiftId: activeShift.id,
       endingCash: data.endingCash,
       variance: data.variance,
       notes: data.notes,
     });
+
+    if (!result.success) {
+      toast.error(result.error || "Failed to close shift");
+      return;
+    }
     
+    toast.success("Shift closed successfully");
     clearShift();
     if (onCloseShift) onCloseShift();
   };

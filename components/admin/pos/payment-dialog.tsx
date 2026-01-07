@@ -51,20 +51,9 @@ export function PaymentDialog({
                 setIsLoading(false);
                 return;
             }
-            amount = tendered; // Pass tendered amount to backend? 
-            // Backend treats amount as "Payment Amount". If > total, it's just recorded.
-            // Logic: Record the PAYMENT as the Total Due, or the Tendered?
-            // Usually we record the payment for the bill amount. Change is separate.
-            // But let's pass the tendered amount to the action to handle "change" calculation if needed.
-            // Actually, backend logic I wrote sums payments. 
-            // If I pay 1000 for 500 bill, I shouldn't record 1000 revenue.
-            // I should record 500.
-            // Frontend should determine "Payment Amount" vs "Tendered".
-            amount = totalAmount; 
-            // But wait, what if partial payment?
-            // User might want to split bill.
-            // For now, assume full payment only for simplicity as per "PAY" button context.
-            // So we send `totalAmount`.
+            // For simple POS, we record the payment of the total due.
+            // Any excess is change returned to customer, not revenue.
+            amount = totalAmount;
         } else if (activeTab === "card") {
             method = "CREDIT_CARD";
             reference = cardReference;

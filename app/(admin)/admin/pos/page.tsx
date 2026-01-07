@@ -400,6 +400,7 @@ export default async function POSPage({ searchParams }: POSPageProps) {
         {/* POS Interface */}
         {selectedOutlet ? (
           <OrderEntry
+            propertyId={selectedOutlet.property.id}
             outletId={selectedOutlet.id}
             outletName={selectedOutlet.name}
             tables={tableData}

@@ -42,81 +42,21 @@ import {
 } from "@/lib/pos/discount";
 import { voidOrder, voidOrderItem } from "@/lib/pos/void";
 import { usePOSStore } from "@/store/usePOSStore";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"; // Added
-import { Clock, PlayCircle } from "lucide-react"; // Added
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Clock, PlayCircle } from "lucide-react";
+import {
+  MenuItemCategory,
+  MenuItem,
+  TableData,
+  OrderItem,
+  CurrentOrder,
+} from "./types";
+import { DiscountType } from "@prisma/client";
 
-interface MenuItemCategory {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-}
 
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string | null;
-  category: MenuItemCategory;
-  sellingPrice: number;
-  isAvailable: boolean;
-  unavailableReason: string | null;
-  imageUrl?: string | null;
-  availableServings?: number | null;
-}
-
-interface TableData {
-  id: string;
-  number: string;
-  capacity: number;
-  status: POSTableStatus;
-  positionX: number | null;
-  positionY: number | null;
-  orders: {
-    id: string;
-    orderNumber: string;
-    status: string;
-    total: number;
-    subtotal: number;
-    taxAmount: number;
-    serviceCharge: number;
-    discountAmount: number;
-    createdAt: Date;
-    customerName?: string | null;
-    serverName?: string | null;
-    items: OrderItem[];
-  }[];
-}
-
-interface OrderItem {
-  id: string;
-  menuItemId: string;
-  menuItemName: string;
-  menuItemCategory: string;
-  quantity: number;
-  unitPrice: number;
-  modifiers: string | null;
-  notes: string | null;
-  status: string;
-  menuItemImage?: string | null;
-}
-
-interface CurrentOrder {
-  id: string;
-  orderNumber: string;
-  status: POSOrderStatus;
-  tableId: string | null;
-  tableName: string | null;
-  serverName: string | null;
-  items: OrderItem[];
-  subtotal: number;
-  taxAmount: number;
-  serviceCharge: number;
-  discountAmount: number;
-  total: number;
-  customerName?: string | null;
-}
 
 interface OrderEntryProps {
+  propertyId: string;
   outletId: string;
   outletName: string;
   tables: TableData[];
@@ -128,6 +68,7 @@ interface OrderEntryProps {
 }
 
 export function OrderEntry({
+  propertyId,
   outletId,
   outletName,
   tables,
@@ -166,7 +107,7 @@ export function OrderEntry({
   // Data States
   const [checkedInGuests, setCheckedInGuests] = React.useState<HotelGuest[]>([]);
   const [voidTarget, setVoidTarget] = React.useState<{ type: "order" | "item", itemId?: string, itemName?: string, amount: number } | null>(null);
-  const [discountTypes, setDiscountTypes] = React.useState<any[]>([]);
+  const [discountTypes, setDiscountTypes] = React.useState<DiscountType[]>([]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
@@ -176,9 +117,15 @@ export function OrderEntry({
   }, [isCustomerDialogOpen]);
 
   // Load discount types on mount
+  // Load discount types on mount
   React.useEffect(() => {
-    // Ideally fetch types here
-  }, []);
+    getDiscountTypes(propertyId)
+      .then(setDiscountTypes)
+      .catch((error) => {
+        console.error("Failed to load discount types:", error);
+        toast.error("Failed to load discount types");
+      });
+  }, [propertyId]);
 
   // Get selected table info
   const selectedTable = tables.find((t) => t.id === selectedTableId);
