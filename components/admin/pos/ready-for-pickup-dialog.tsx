@@ -109,7 +109,7 @@ export function ReadyForPickupDialog({
         </div>
 
         <div className="my-6 border-y border-dashed border-white/10 py-8 flex flex-col items-center justify-center bg-white/[0.02]">
-            <span className="text-xl text-neutral-500 font-medium mb-2 uppercase tracking-widest text-[10px]">Quantity</span>
+            <span className="text-neutral-500 font-medium mb-2 uppercase tracking-widest text-[10px]">Quantity</span>
             <span className="text-7xl font-mono font-bold text-green-500 mb-4 tracking-tighter tabular-nums drop-shadow-sm">
               {readyItem.quantity}
             </span>

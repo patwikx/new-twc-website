@@ -180,7 +180,7 @@ export function OrderTakerTerminal({
       unsubRefreshAll();
       unsubKitchenUpdate();
     };
-  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate, router, currentOrder?.id]);
+  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate, router, currentOrder?.id, outletId]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {

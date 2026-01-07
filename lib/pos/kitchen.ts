@@ -439,7 +439,7 @@ export async function markItemReady(itemId: string) {
     });
 
     const allItemsReady = allOrderItems.every(
-      item => item.status === "READY" || item.status === "SERVED" || item.status === "CANCELLED"
+      item => item.status === "READY" || item.status === "SERVED" || item.status === "CANCELLED" || item.status === "PICKED_UP"
     );
 
     if (allItemsReady) {
@@ -826,14 +826,7 @@ export async function acknowledgePickup(itemId: string) {
     const updatedItem = await db.pOSOrderItem.update({
       where: { id: itemId },
       data: {
-        status: "PICKED_UP", // Updated to use new status
-        // servedAt: now, // We might want to keep servedAt null until actually served, or use it for picked up time?
-        // Let's assume servedAt implies "completed/served/picked up" for now or add pickedUpAt?
-        // Schema doesn't have pickedUpAt. Let's use servedAt or leave it. 
-        // Existing code used servedAt. I'll keep it or remove it?
-        // If I change status to PICKED_UP, maybe I shouldn't set servedAt yet.
-        // But for reporting, if we don't have a separate SERVED step, this might be the end.
-        // I will commented out servedAt for now unless I add pickedUpAt field.
+        status: "PICKED_UP",
       },
       include: {
         menuItem: {
