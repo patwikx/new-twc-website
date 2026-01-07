@@ -78,11 +78,19 @@ export function OrderSummary({
     }).format(value);
   };
 
-  const activeStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+  const activeStatuses: string[] = [
+    POSOrderStatus.OPEN, 
+    POSOrderStatus.SENT_TO_KITCHEN, 
+    POSOrderStatus.IN_PROGRESS, 
+    POSOrderStatus.READY, 
+    POSOrderStatus.SERVED
+  ];
+  const excludedStatuses: string[] = [POSOrderStatus.PAID, POSOrderStatus.CANCELLED, POSOrderStatus.VOID];
+  
   const canModifyItems = !orderStatus || activeStatuses.includes(orderStatus);
   const canSendToKitchen = (!orderStatus || activeStatuses.includes(orderStatus)) && items.length > 0;
   const canPay = orderStatus && activeStatuses.includes(orderStatus);
-  const canInteract = orderStatus && !["PAID", "CANCELLED", "VOID", "CLOSED"].includes(orderStatus);
+  const canInteract = orderStatus && !excludedStatuses.includes(orderStatus);
 
   const pendingItems = items.filter((item) => item.status === "PENDING" || item.status === "OPEN"); 
   const sentItems = items.filter((item) => item.status !== "PENDING" && item.status !== "OPEN");

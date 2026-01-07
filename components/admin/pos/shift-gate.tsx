@@ -426,7 +426,15 @@ export function ShiftGate({
         open={showXReading}
         onOpenChange={setShowXReading}
         shiftId={shift.id}
-        onGenerateReading={() => generateXReading(shift.id).then(r => r.data!)}
+        onGenerateReading={async () => {
+          const result = await generateXReading(shift.id);
+          if (!result.success || !result.data) {
+            const errorMsg = result.error || "Failed to generate X-Reading";
+            toast.error(errorMsg);
+            throw new Error(errorMsg);
+          }
+          return result.data;
+        }}
       />
     </div>
   );

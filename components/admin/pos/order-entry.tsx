@@ -421,19 +421,28 @@ export function OrderEntry({
         setSelectedTableId(null);
         setActiveTab("tables");
       } else if (voidTarget.type === "item" && voidTarget.itemId) {
+        // Get the actual item to void
+        const targetItem = currentOrder.items.find(i => i.id === voidTarget.itemId);
+        const voidQuantity = targetItem?.quantity || 1;
+        
         await voidOrderItem({
           orderId: currentOrder.id,
           itemId: voidTarget.itemId,
-          quantity: 1, 
+          quantity: voidQuantity, // Use actual item quantity
           ...data
         });
         toast.success("Item voided");
-        // Remove item from state or mark as cancelled
+        // Update item quantity in state instead of removing
         setCurrentOrder(prev => {
             if (!prev) return null;
+            const updatedItems = prev.items.map(item => {
+                if (item.id !== voidTarget.itemId) return item;
+                const newQty = item.quantity - voidQuantity;
+                return newQty <= 0 ? null : { ...item, quantity: newQty };
+            }).filter((item): item is NonNullable<typeof item> => item !== null);
             return {
                 ...prev,
-                items: prev.items.filter(i => i.id !== voidTarget.itemId)
+                items: updatedItems
             };
         });
       }

@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
-import { ReadingType, PaymentMethod } from "@prisma/client";
+import { ReadingType, PaymentMethod, Prisma } from "@prisma/client";
 
 interface GenerateReadingResult {
   success: boolean;
@@ -521,7 +521,7 @@ export async function handoverShift(data: {
 /**
  * Internal helper to calculate using a transaction client
  */
-async function calculateShiftTotalsInternal(tx: any, shiftId: string) {
+async function calculateShiftTotalsInternal(tx: Prisma.TransactionClient, shiftId: string) {
     const shift = await tx.shift.findUnique({
         where: { id: shiftId },
         include: {
@@ -531,6 +531,15 @@ async function calculateShiftTotalsInternal(tx: any, shiftId: string) {
           },
         },
     });
+
+    // Guard against null shift
+    if (!shift) {
+        return { 
+            orderCount: 0, totalSales: 0, cashSales: 0, cardSales: 0, 
+            roomChargeSales: 0, otherSales: 0, voidCount: 0, voidAmount: 0, 
+            discountCount: 0, discountTotal: 0, expectedCash: 0 
+        };
+    }
 
     let orderCount = 0; let totalSales = 0; let cashSales = 0; let cardSales = 0; let roomChargeSales = 0; let otherSales = 0;
     let voidCount = 0; let voidAmount = 0; let discountCount = 0; let discountTotal = 0;
@@ -552,7 +561,7 @@ async function calculateShiftTotalsInternal(tx: any, shiftId: string) {
         for (const orderVoid of order.orderVoids) { voidCount++; voidAmount += Number(orderVoid.originalAmount); }
     }
     totalSales = cashSales + cardSales + roomChargeSales + otherSales;
-    const startingCash = Number(shift.startingCash);
+    const startingCash = Number(shift.startingCash ?? 0);
     const expectedCash = startingCash + cashSales;
 
     return { orderCount, totalSales, cashSales, cardSales, roomChargeSales, otherSales, voidCount, voidAmount, discountCount, discountTotal, expectedCash };
@@ -562,6 +571,11 @@ async function calculateShiftTotalsInternal(tx: any, shiftId: string) {
  * Get shift readings history
  */
 export async function getShiftReadings(shiftId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
   const readings = await db.shiftReading.findMany({
     where: { shiftId },
     include: {
@@ -576,7 +590,7 @@ export async function getShiftReadings(shiftId: string) {
     readingNumber: r.readingNumber,
     orderCount: r.orderCount,
     totalSales: Number(r.totalSales),
-    generatedBy: r.generatedBy.name,
+    generatedBy: r.generatedBy?.name || "Unknown",
     createdAt: r.createdAt,
   }));
 }

@@ -79,11 +79,17 @@ export default async function POSPage({ searchParams }: POSPageProps) {
   const selectedOutletId = params.outlet || outlets[0]?.id;
   const selectedOutlet = outlets.find((o) => o.id === selectedOutletId);
 
+  // Extract and validate userId early
+  const userId = session?.user?.id;
+  if (!userId) {
+    redirect("/auth/login");
+  }
+
   // Check if user has an open shift for this outlet
   const currentShift = selectedOutletId 
     ? await db.shift.findFirst({
         where: {
-          cashierId: session.user.id!,
+          cashierId: userId,
           outletId: selectedOutletId,
           status: "OPEN",
         },
@@ -280,11 +286,16 @@ export default async function POSPage({ searchParams }: POSPageProps) {
     id: item.id,
     name: item.name,
     description: item.description,
-    category: {
+    category: item.category ? {
       id: item.category.id,
       name: item.category.name,
       color: item.category.color,
       icon: item.category.icon,
+    } : {
+      id: "",
+      name: "Uncategorized",
+      color: null,
+      icon: null,
     },
     sellingPrice: Number(item.sellingPrice),
     isAvailable: item.isAvailable,

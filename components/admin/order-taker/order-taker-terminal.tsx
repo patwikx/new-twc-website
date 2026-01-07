@@ -91,9 +91,20 @@ export function OrderTakerTerminal({
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
-    if (isCustomerDialogOpen) {
-      searchCheckedInGuests().then(setCheckedInGuests);
-    }
+    if (!isCustomerDialogOpen) return;
+    
+    let isMounted = true;
+    
+    searchCheckedInGuests()
+      .then((guests) => {
+        if (isMounted) setCheckedInGuests(guests);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch guests:", error);
+        if (isMounted) setCheckedInGuests([]);
+      });
+
+    return () => { isMounted = false; };
   }, [isCustomerDialogOpen]);
 
   // Handle table selection - EXACT match of OrderEntry logic
@@ -333,17 +344,16 @@ export function OrderTakerTerminal({
         return;
       }
 
-      // Update local state
-      router.refresh();
+      // Update local state first, then refresh
       const updatedItems = currentOrder.items.filter((item) => item.id !== itemId);
       
       if (updatedItems.length === 0) {
-        // If order empty? Keep order but empty items
         setCurrentOrder(prev => prev ? { ...prev, items: [] } : null);
       } else {
         setCurrentOrder(prev => prev ? { ...prev, items: updatedItems } : null);
       }
 
+      router.refresh();
       toast.success("Item removed");
     } catch (error) {
       console.error("Remove item error:", error);
@@ -366,14 +376,13 @@ export function OrderTakerTerminal({
       }
       
       // Manually update local state to reflect changes immediately
-      // (Backend transaction returns order before items are updated, so items in result might be stale)
       setCurrentOrder(prev => {
         if (!prev) return null;
         return {
            ...prev,
-           status: result.data?.status || "SENT_TO_KITCHEN",
+           status: result.data?.status || POSOrderStatus.SENT_TO_KITCHEN,
            items: prev.items.map(item => 
-              item.status === "PENDING" ? { ...item, status: "SENT" } : item
+              item.status === "PENDING" || item.status === "OPEN" ? { ...item, status: "SENT" } : item
            )
         };
       });
@@ -388,25 +397,26 @@ export function OrderTakerTerminal({
     }
   };
 
-  // Handle customer assignment - EXACT Copy of OrderEntry logic
+  // Handle customer assignment - move store update to success branch
   const handleAssignCustomer = async (customer: any) => {
     // Case 1: Existing Order (Assign to active order)
     if (currentOrder) {
         setIsLoading(true);
         try {
-            assignCustomer(customer); // Update Store
             const result = await assignCustomerToOrder(currentOrder.id, customer);
             
             if (result.error) {
                 toast.error(result.error);
             } else {
-                 toast.success("Customer assigned");
+                // Only update store on success
+                assignCustomer(customer);
+                toast.success("Customer assigned");
              
-             // Update local state with customer name
-             setCurrentOrder(prev => prev ? { ...prev, customerName: customer.name } : null);
+                // Update local state with customer name
+                setCurrentOrder(prev => prev ? { ...prev, customerName: customer.name } : null);
 
-             setIsCustomerDialogOpen(false);
-             router.refresh();
+                setIsCustomerDialogOpen(false);
+                router.refresh();
             }
         } catch (error) {
             toast.error("Failed to assign customer");
@@ -598,7 +608,11 @@ export function OrderTakerTerminal({
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => setItemQuantity(String(Math.max(1, parseInt(itemQuantity) - 1)))}
+                      onClick={() => {
+                        let qty = parseInt(itemQuantity, 10);
+                        if (Number.isNaN(qty) || qty < 0) qty = 1;
+                        setItemQuantity(String(Math.max(1, qty - 1)));
+                      }}
                       className="border-white/10"
                     >
                       <Minus className="h-4 w-4" />
@@ -613,7 +627,11 @@ export function OrderTakerTerminal({
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => setItemQuantity(String(parseInt(itemQuantity) + 1))}
+                      onClick={() => {
+                        let qty = parseInt(itemQuantity, 10);
+                        if (Number.isNaN(qty) || qty < 0) qty = 0;
+                        setItemQuantity(String(qty + 1));
+                      }}
                       className="border-white/10"
                     >
                       <Plus className="h-4 w-4" />
