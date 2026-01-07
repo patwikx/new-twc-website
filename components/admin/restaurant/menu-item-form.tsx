@@ -15,8 +15,17 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { createMenuItem, updateMenuItem } from "@/lib/inventory/menu-item";
-import { Loader2, Utensils, Building2, ChefHat, DollarSign } from "lucide-react";
-import { MenuCategory } from "@prisma/client";
+import { 
+  Loader2, 
+  Utensils, 
+  Building2, 
+  ChefHat, 
+  DollarSign, 
+  ImageIcon,
+  X,
+  AlertTriangle,
+} from "lucide-react";
+import { FileUpload } from "@/components/file-upload";
 
 interface Property {
   id: string;
@@ -28,6 +37,14 @@ interface Recipe {
   name: string;
   yield: number;
   yieldUnit: string;
+  minimumServingsThreshold: number;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
 }
 
 interface MenuItemFormProps {
@@ -35,33 +52,28 @@ interface MenuItemFormProps {
     id: string;
     name: string;
     description: string | null;
-    category: MenuCategory;
+    categoryId: string;
     sellingPrice: number;
     recipeId: string | null;
-    image: string | null;
+    imageUrl: string | null;
     isAvailable: boolean;
     unavailableReason: string | null;
+    availableServings: number | null;
     propertyId: string;
   };
   properties: Property[];
   recipes: Recipe[];
+  categories: Category[];
   isEditMode?: boolean;
   currentPropertyId?: string | null;
   currentPropertyName?: string;
 }
 
-const CATEGORY_OPTIONS: { value: MenuCategory; label: string }[] = [
-  { value: "APPETIZER", label: "Appetizer" },
-  { value: "MAIN_COURSE", label: "Main Course" },
-  { value: "DESSERT", label: "Dessert" },
-  { value: "BEVERAGE", label: "Beverage" },
-  { value: "SIDE_DISH", label: "Side Dish" },
-];
-
 export function MenuItemForm({
   menuItem,
   properties,
   recipes,
+  categories,
   isEditMode = false,
   currentPropertyId,
   currentPropertyName,
@@ -72,18 +84,20 @@ export function MenuItemForm({
   const [selectedPropertyId, setSelectedPropertyId] = useState(
     menuItem?.propertyId ?? currentPropertyId ?? ""
   );
-  const [selectedCategory, setSelectedCategory] = useState<MenuCategory>(
-    menuItem?.category ?? "MAIN_COURSE"
+  const [selectedCategoryId, setSelectedCategoryId] = useState(
+    menuItem?.categoryId ?? ""
   );
   const [selectedRecipeId, setSelectedRecipeId] = useState(
     menuItem?.recipeId ?? ""
   );
+  const [imageUrl, setImageUrl] = useState(menuItem?.imageUrl ?? "");
 
   // Determine if we should show property selector
   const showPropertySelector = !isEditMode && !currentPropertyId;
 
   // Get the selected recipe for display
   const selectedRecipe = recipes.find(r => r.id === selectedRecipeId);
+  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -104,6 +118,11 @@ export function MenuItemForm({
       return;
     }
 
+    if (!selectedCategoryId) {
+      toast.error("Please select a category");
+      return;
+    }
+
     startTransition(async () => {
       let result;
 
@@ -111,18 +130,20 @@ export function MenuItemForm({
         result = await updateMenuItem(menuItem.id, {
           name,
           description: description || undefined,
-          category: selectedCategory,
+          categoryId: selectedCategoryId,
           sellingPrice,
           recipeId: selectedRecipeId || null,
+          imageUrl: imageUrl || null,
         });
       } else {
         result = await createMenuItem({
           name,
           description: description || undefined,
-          category: selectedCategory,
+          categoryId: selectedCategoryId,
           sellingPrice,
           propertyId,
           recipeId: selectedRecipeId ? selectedRecipeId : undefined,
+          imageUrl: imageUrl || undefined,
         });
       }
 
@@ -231,20 +252,40 @@ export function MenuItemForm({
                 Category
               </Label>
               <Select 
-                value={selectedCategory}
-                onValueChange={(value) => setSelectedCategory(value as MenuCategory)}
+                value={selectedCategoryId}
+                onValueChange={setSelectedCategoryId}
               >
                 <SelectTrigger className="bg-neutral-900/30 border-white/10 focus:border-orange-500/50 focus:ring-orange-500/20">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                  {categories.length === 0 ? (
+                    <SelectItem value="" disabled>
+                      No categories available
                     </SelectItem>
-                  ))}
+                  ) : (
+                    categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        <div className="flex items-center gap-2">
+                          {category.color && (
+                            <div 
+                              className="h-3 w-3 rounded-full" 
+                              style={{ backgroundColor: category.color }}
+                            />
+                          )}
+                          {category.name}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
+              {categories.length === 0 && (
+                <p className="text-xs text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  No categories found. Create categories first.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -330,7 +371,7 @@ export function MenuItemForm({
             {isEditMode && menuItem && (
               <div className="space-y-2">
                 <Label className="text-xs text-neutral-500 uppercase tracking-widest">
-                  Status
+                  Availability Status
                 </Label>
                 <div className="flex items-center gap-2">
                   <div
@@ -341,18 +382,67 @@ export function MenuItemForm({
                   <span className="text-sm text-neutral-300">
                     {menuItem.isAvailable ? "Available" : "Unavailable"}
                   </span>
+                  {menuItem.availableServings !== null && (
+                    <span className="text-xs text-neutral-500">
+                      ({menuItem.availableServings} servings in stock)
+                    </span>
+                  )}
                 </div>
                 {!menuItem.isAvailable && menuItem.unavailableReason && (
-                  <p className="text-xs text-neutral-500">
-                    Reason: {menuItem.unavailableReason}
+                  <p className="text-xs text-red-400">
+                    {menuItem.unavailableReason}
                   </p>
                 )}
-                <p className="text-xs text-neutral-500">
-                  Use the list page to change availability status.
-                </p>
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Image Upload */}
+      <div className="space-y-6">
+        <Label className="flex items-center gap-2 text-sm font-medium text-neutral-300 border-b border-white/10 pb-2">
+          <ImageIcon className="h-4 w-4 text-orange-500" />
+          Menu Item Image
+        </Label>
+
+        <div className="space-y-4">
+          {imageUrl ? (
+            <div className="relative w-48 h-48 rounded-lg overflow-hidden border border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt="Menu item"
+                className="w-full h-full object-cover"
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute top-2 right-2 h-6 w-6"
+                onClick={() => setImageUrl("")}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <div className="max-w-md">
+              <FileUpload
+                accept=".jpg,.jpeg,.png,.webp"
+                maxSize={5}
+                onUploadComplete={(result) => {
+                  setImageUrl(result.fileUrl);
+                  toast.success("Image uploaded");
+                }}
+                onUploadError={(error) => {
+                  toast.error(error);
+                }}
+              />
+              <p className="text-xs text-neutral-500 mt-2">
+                Recommended: Square image, 400x400px or larger
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -369,7 +459,7 @@ export function MenuItemForm({
               htmlFor="recipeId"
               className="text-xs text-neutral-500 uppercase tracking-widest"
             >
-              Associated Recipe (Optional)
+              Associated Recipe
             </Label>
             <Select 
               value={selectedRecipeId || "none"}
@@ -388,9 +478,21 @@ export function MenuItemForm({
               </SelectContent>
             </Select>
             <p className="text-xs text-neutral-500">
-              Link this menu item to a recipe for automatic cost calculation and stock tracking.
+              Link to a recipe for automatic cost calculation and inventory-based availability.
             </p>
           </div>
+
+          {!selectedRecipeId && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center gap-2 text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm font-medium">No Recipe Linked</span>
+              </div>
+              <p className="text-xs text-amber-300/80 mt-1">
+                Without a recipe, this item&apos;s availability won&apos;t be tracked based on ingredient stock.
+              </p>
+            </div>
+          )}
 
           {selectedRecipe && (
             <div className="p-4 bg-neutral-900/30 rounded-lg border border-white/10">
@@ -400,12 +502,12 @@ export function MenuItemForm({
                   {selectedRecipe.name}
                 </span>
               </div>
-              <p className="text-xs text-neutral-400">
-                Yield: {selectedRecipe.yield} {selectedRecipe.yieldUnit} per batch
-              </p>
+              <div className="space-y-1 text-xs text-neutral-400">
+                <p>Yield: {selectedRecipe.yield} {selectedRecipe.yieldUnit} per batch</p>
+                <p>Availability Threshold: {selectedRecipe.minimumServingsThreshold} servings minimum</p>
+              </div>
               <p className="text-xs text-neutral-500 mt-2">
-                When this recipe is associated, the system will automatically calculate food cost percentage
-                and track ingredient consumption when the menu item is sold.
+                This menu item will become unavailable when available servings drop below the threshold.
               </p>
             </div>
           )}

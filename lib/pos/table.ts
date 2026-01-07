@@ -595,3 +595,46 @@ export async function setTableDirty(tableId: string) {
 export async function setTableAvailable(tableId: string) {
   return updateTableStatus(tableId, "AVAILABLE", { skipTransitionValidation: true });
 }
+
+/**
+ * Force clear a table (Owner override)
+ * - Voids/Cancels any active order
+ * - Sets table to AVAILABLE
+ */
+export async function forceClearTable(tableId: string) {
+  try {
+    // 1. Find active order
+    const table = await db.pOSTable.findUnique({
+      where: { id: tableId },
+      include: {
+        orders: {
+          where: {
+            status: { in: ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"] }
+          }
+        }
+      }
+    });
+
+    if (!table) return { error: "Table not found" };
+
+    // 2. Void active orders if any
+    for (const order of table.orders) {
+        await db.pOSOrder.update({
+            where: { id: order.id },
+            data: { 
+                status: "VOID",
+                notes: order.notes ? `${order.notes}\n[System]: Table cleared manually` : "[System]: Table cleared manually"
+            }
+        });
+    }
+
+    // 3. Set table to available
+    const result = await updateTableStatus(tableId, "AVAILABLE", { skipTransitionValidation: true });
+    
+    revalidatePath("/admin/pos");
+    return result;
+  } catch (error) {
+    console.error("Force Clear Table Error:", error);
+    return { error: "Failed to force clear table" };
+  }
+}

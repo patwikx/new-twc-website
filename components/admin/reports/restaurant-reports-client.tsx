@@ -43,7 +43,7 @@ import {
   generateRecipeProfitabilityReport,
   generateWasteAnalysisReport,
 } from "@/lib/inventory/reporting";
-import { MenuCategory, WasteType } from "@prisma/client";
+import { WasteType } from "@prisma/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -67,21 +67,23 @@ interface RestaurantReportsClientProps {
   initialWasteAnalysis: WasteAnalysisReport | null;
 }
 
-const MENU_CATEGORY_LABELS: Record<MenuCategory, string> = {
-  APPETIZER: "Appetizer",
-  MAIN_COURSE: "Main Course",
-  DESSERT: "Dessert",
-  BEVERAGE: "Beverage",
-  SIDE_DISH: "Side Dish",
-};
+// Helper function to get category color class
+function getCategoryColorClass(color: string | null): string {
+  if (!color) return "bg-neutral-500/20 text-neutral-400 border-neutral-500/30";
+  
+  const colorMap: Record<string, string> = {
+    orange: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    red: "bg-red-500/20 text-red-400 border-red-500/30",
+    green: "bg-green-500/20 text-green-400 border-green-500/30",
+    blue: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    purple: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    pink: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+    yellow: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    cyan: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  };
 
-const MENU_CATEGORY_COLORS: Record<MenuCategory, string> = {
-  APPETIZER: "bg-green-500/20 text-green-400 border-green-500/30",
-  MAIN_COURSE: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  DESSERT: "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  BEVERAGE: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  SIDE_DISH: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-};
+  return colorMap[color] || "bg-neutral-500/20 text-neutral-400 border-neutral-500/30";
+}
 
 const WASTE_TYPE_LABELS: Record<WasteType, string> = {
   SPOILAGE: "Spoilage",
@@ -209,7 +211,8 @@ export function RestaurantReportsClient({
     if (!cogsSearch) return cogsReport.items;
     const search = cogsSearch.toLowerCase();
     return cogsReport.items.filter((item) =>
-      item.menuItemName.toLowerCase().includes(search) || MENU_CATEGORY_LABELS[item.category].toLowerCase().includes(search)
+      item.menuItemName.toLowerCase().includes(search) || 
+      (typeof item.category === 'string' ? item.category : item.category?.name || '').toLowerCase().includes(search)
     );
   }, [cogsReport, cogsSearch]);
 
@@ -358,9 +361,11 @@ export function RestaurantReportsClient({
               <h3 className="text-lg font-semibold">COGS by Category</h3>
               <div className="space-y-2">
                 {cogsReport.byCategory.map((cat) => (
-                  <div key={cat.category} className="flex items-center justify-between py-2 border-b border-white/5">
+                  <div key={typeof cat.category === 'string' ? cat.category : cat.category?.id || 'unknown'} className="flex items-center justify-between py-2 border-b border-white/5">
                     <div className="flex items-center gap-3">
-                      <Badge variant="outline" className={MENU_CATEGORY_COLORS[cat.category]}>{MENU_CATEGORY_LABELS[cat.category]}</Badge>
+                      <Badge variant="outline" className={typeof cat.category === 'object' ? getCategoryColorClass(cat.category?.color) : "bg-neutral-500/20 text-neutral-400 border-neutral-500/30"}>
+                        {typeof cat.category === 'string' ? cat.category : cat.category?.name || 'Unknown'}
+                      </Badge>
                       <span className="text-sm text-muted-foreground">{cat.itemCount} items</span>
                     </div>
                     <div className="flex items-center gap-6">
@@ -414,7 +419,11 @@ export function RestaurantReportsClient({
                     filteredCOGSItems.map((item) => (
                       <TableRow key={item.menuItemId} className="border-white/10 hover:bg-white/5">
                         <TableCell><div className="font-medium text-sm">{item.menuItemName}</div></TableCell>
-                        <TableCell><Badge variant="outline" className={MENU_CATEGORY_COLORS[item.category]}>{MENU_CATEGORY_LABELS[item.category]}</Badge></TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={typeof item.category === 'object' ? getCategoryColorClass(item.category?.color) : "bg-neutral-500/20 text-neutral-400 border-neutral-500/30"}>
+                            {typeof item.category === 'string' ? item.category : item.category?.name || 'Unknown'}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-right text-sm">{item.quantitySold}</TableCell>
                         <TableCell className="text-right text-sm text-green-400">{formatCurrency(item.totalRevenue)}</TableCell>
                         <TableCell className="text-right text-sm text-red-400">{formatCurrency(item.totalCOGS)}</TableCell>

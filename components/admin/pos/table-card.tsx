@@ -21,6 +21,7 @@ interface TableOrder {
   status: string;
   total: number;
   createdAt: Date;
+  customerName?: string | null;
 }
 
 interface TableCardProps {
@@ -206,10 +207,19 @@ export function TableCard({
                 Mark as Available
               </DropdownMenuItem>
             )}
-            {status === "OCCUPIED" && currentOrder && (
-              <DropdownMenuItem disabled className="text-neutral-500">
-                Table has active order
-              </DropdownMenuItem>
+            {status === "OCCUPIED" && (
+                <>
+                   {currentOrder && (
+                     <DropdownMenuItem disabled className="text-neutral-500">
+                       Table has active order
+                     </DropdownMenuItem>
+                   )}
+                   <DropdownMenuSeparator />
+                   <DropdownMenuItem onClick={() => handleStatusChange("AVAILABLE")} className="text-red-400 focus:text-red-400">
+                     <Ban className="h-4 w-4 mr-2" />
+                     Force Available
+                   </DropdownMenuItem>
+                </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -224,12 +234,18 @@ export function TableCard({
               <span>{getOrderDuration(currentOrder.createdAt)}</span>
             </div>
             <div className="flex items-center gap-1 text-green-400 font-medium">
-              <DollarSign className="h-3.5 w-3.5" />
               <span>{formatCurrency(Number(currentOrder.total))}</span>
             </div>
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
-            Order #{currentOrder.orderNumber}
+          <div className="flex justify-between items-center mt-1">
+             <div className="text-xs text-neutral-500 font-mono">
+               #{currentOrder.orderNumber.split('-').pop()}
+             </div>
+             {currentOrder.customerName && (
+                <div className="text-xs font-medium text-orange-400 truncate max-w-[120px]" title={currentOrder.customerName}>
+                  {currentOrder.customerName}
+                </div>
+             )}
           </div>
         </div>
       )}

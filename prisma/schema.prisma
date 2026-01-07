@@ -64,6 +64,7 @@ model User {
     serverOrders      POSOrder[]     @relation("ServerOrders")
     processedPayments OrderPayment[] @relation("PaymentProcessor")
     cashierShifts     Shift[]        @relation("CashierShifts")
+    shiftHandovers    Shift[]        @relation("ShiftHandover")
 
     // Purchase Order Relations
     createdPOs    PurchaseOrder[] @relation("POCreatedBy")
@@ -71,6 +72,12 @@ model User {
     poReceipts    POReceipt[]     @relation("POReceiver")
     auditLogs     AuditLog[]
     notifications Notification[]
+    shiftReadings ShiftReading[]  @relation("ReadingGenerator")
+
+    // Discount/Void approvals
+    approvedDiscounts OrderDiscount[] @relation("DiscountApprover")
+    approvedVoids     OrderVoid[]     @relation("VoidApprover")
+    createdVoids      OrderVoid[]     @relation("VoidCreator")
 
     @@index([email])
     @@index([role])
@@ -251,6 +258,8 @@ model Property {
     salesOutlets   SalesOutlet[]
     purchaseOrders PurchaseOrder[]
     events         Event[]
+    discountTypes  DiscountType[]
+    menuCategories MenuCategory[]
 }
 
 model PropertyPolicy {
@@ -965,16 +974,17 @@ model RequisitionItem {
 // -----------------------------------------------------------------------------
 
 model Recipe {
-    id              String        @id @default(uuid())
-    name            String
-    description     String?       @db.Text
-    yield           Decimal       @db.Decimal(10, 2)
-    yieldUnitId     String
-    yieldUnit       UnitOfMeasure @relation(fields: [yieldUnitId], references: [id])
-    instructions    String?       @db.Text
-    prepTimeMinutes Int?
-    cookTimeMinutes Int?
-    isActive        Boolean       @default(true)
+    id                       String        @id @default(uuid())
+    name                     String
+    description              String?       @db.Text
+    yield                    Decimal       @db.Decimal(10, 2)
+    yieldUnitId              String
+    yieldUnit                UnitOfMeasure @relation(fields: [yieldUnitId], references: [id])
+    instructions             String?       @db.Text
+    prepTimeMinutes          Int?
+    cookTimeMinutes          Int?
+    isActive                 Boolean       @default(true)
+    minimumServingsThreshold Int           @default(5) // Disable menu item if available servings fall below this
 
     ingredients   RecipeIngredient[]
     parentRecipes RecipeSubRecipe[]  @relation("ChildRecipe")
@@ -1011,19 +1021,42 @@ model RecipeSubRecipe {
     @@unique([parentRecipeId, childRecipeId])
 }
 
+// Dynamic Menu Categories (user-manageable)
+model MenuCategory {
+    id          String    @id @default(uuid())
+    propertyId  String?
+    property    Property? @relation(fields: [propertyId], references: [id])
+    name        String
+    description String?
+    color       String? // For UI display (e.g., "#FF5733", "orange")
+    icon        String? // Optional icon name (e.g., "UtensilsCrossed", "Coffee")
+    sortOrder   Int       @default(0)
+    isActive    Boolean   @default(true)
+
+    menuItems MenuItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([propertyId, name])
+    @@index([propertyId])
+}
+
 model MenuItem {
     id                String       @id @default(uuid())
     propertyId        String
     property          Property     @relation(fields: [propertyId], references: [id])
     name              String
     description       String?      @db.Text
-    category          MenuCategory
+    categoryId        String
+    category          MenuCategory @relation(fields: [categoryId], references: [id])
     sellingPrice      Decimal      @db.Decimal(10, 2)
     recipeId          String?
     recipe            Recipe?      @relation(fields: [recipeId], references: [id])
     isAvailable       Boolean      @default(true)
     unavailableReason String?
-    image             String?
+    imageUrl          String? // MinIO URL for menu item image
+    availableServings Int? // Cached count of available servings based on stock
 
     cogsRecords COGSRecord[]
 
@@ -1034,15 +1067,7 @@ model MenuItem {
     updatedAt DateTime @updatedAt
 
     @@index([propertyId])
-    @@index([category])
-}
-
-enum MenuCategory {
-    APPETIZER
-    MAIN_COURSE
-    DESSERT
-    BEVERAGE
-    SIDE_DISH
+    @@index([categoryId])
 }
 
 model COGSRecord {
@@ -1386,31 +1411,33 @@ model POSTable {
 
 // POS Order
 model POSOrder {
-    id             String         @id @default(uuid())
-    orderNumber    String         @unique
+    id             String          @id @default(uuid())
+    orderNumber    String          @unique
     outletId       String
     tableId        String?
     bookingId      String?
     guestId        String?
     serverId       String
     shiftId        String?
-    status         POSOrderStatus @default(OPEN)
-    subtotal       Decimal        @db.Decimal(12, 2)
-    taxAmount      Decimal        @db.Decimal(12, 2)
-    serviceCharge  Decimal        @default(0) @db.Decimal(12, 2)
-    discountAmount Decimal        @default(0) @db.Decimal(12, 2)
-    tipAmount      Decimal        @default(0) @db.Decimal(12, 2)
-    total          Decimal        @db.Decimal(12, 2)
+    status         POSOrderStatus  @default(OPEN)
+    subtotal       Decimal         @db.Decimal(12, 2)
+    taxAmount      Decimal         @db.Decimal(12, 2)
+    serviceCharge  Decimal         @default(0) @db.Decimal(12, 2)
+    discountAmount Decimal         @default(0) @db.Decimal(12, 2)
+    tipAmount      Decimal         @default(0) @db.Decimal(12, 2)
+    total          Decimal         @db.Decimal(12, 2)
     notes          String?
-    outlet         SalesOutlet    @relation(fields: [outletId], references: [id])
-    table          POSTable?      @relation(fields: [tableId], references: [id])
-    booking        Booking?       @relation(fields: [bookingId], references: [id])
-    server         User           @relation("ServerOrders", fields: [serverId], references: [id])
-    shift          Shift?         @relation(fields: [shiftId], references: [id])
+    outlet         SalesOutlet     @relation(fields: [outletId], references: [id])
+    table          POSTable?       @relation(fields: [tableId], references: [id])
+    booking        Booking?        @relation(fields: [bookingId], references: [id])
+    server         User            @relation("ServerOrders", fields: [serverId], references: [id])
+    shift          Shift?          @relation(fields: [shiftId], references: [id])
     items          POSOrderItem[]
     payments       OrderPayment[]
-    createdAt      DateTime       @default(now())
-    updatedAt      DateTime       @updatedAt
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    orderDiscounts OrderDiscount[]
+    orderVoids     OrderVoid[]
 
     @@index([outletId])
     @@index([status])
@@ -1454,6 +1481,76 @@ model OrderPayment {
 }
 
 // -----------------------------------------------------------------------------
+// 13.5 Discount Management
+// -----------------------------------------------------------------------------
+
+// Dynamic Discount Types
+model DiscountType {
+    id               String   @id @default(uuid())
+    propertyId       String
+    code             String // PWD, SENIOR, MANAGER, PROMO
+    name             String // "PWD Discount"
+    description      String?
+    percentage       Decimal  @db.Decimal(5, 2) // 20.00 = 20%
+    isActive         Boolean  @default(true)
+    requiresId       Boolean  @default(false) // Require ID scan/number
+    requiresApproval Boolean  @default(false) // Manager approval needed
+    maxAmount        Decimal? @db.Decimal(12, 2) // Cap on discount amount
+
+    property       Property        @relation(fields: [propertyId], references: [id])
+    orderDiscounts OrderDiscount[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([propertyId, code])
+    @@index([propertyId])
+    @@index([isActive])
+}
+
+// Applied discounts on orders
+model OrderDiscount {
+    id             String  @id @default(uuid())
+    orderId        String
+    discountTypeId String
+    amount         Decimal @db.Decimal(12, 2) // Calculated discount amount
+    percentage     Decimal @db.Decimal(5, 2) // Snapshot of rate at time of application
+    idNumber       String? // PWD/Senior ID if required
+    approvedById   String? // Manager who approved
+    notes          String?
+
+    order        POSOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    discountType DiscountType @relation(fields: [discountTypeId], references: [id])
+    approvedBy   User?        @relation("DiscountApprover", fields: [approvedById], references: [id])
+
+    createdAt DateTime @default(now())
+
+    @@index([orderId])
+    @@index([discountTypeId])
+}
+
+// Void tracking with audit
+model OrderVoid {
+    id             String  @id @default(uuid())
+    orderId        String
+    itemId         String? // null = whole order voided
+    reason         String
+    voidedById     String // Who requested the void
+    approvedById   String // Manager who approved
+    originalAmount Decimal @db.Decimal(12, 2) // Amount being voided
+
+    order      POSOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+    voidedBy   User     @relation("VoidCreator", fields: [voidedById], references: [id])
+    approvedBy User     @relation("VoidApprover", fields: [approvedById], references: [id])
+
+    createdAt DateTime @default(now())
+
+    @@index([orderId])
+    @@index([voidedById])
+    @@index([approvedById])
+}
+
+// -----------------------------------------------------------------------------
 // 14. Shift Management
 // -----------------------------------------------------------------------------
 
@@ -1462,11 +1559,22 @@ enum ShiftStatus {
     CLOSED
 }
 
+enum ShiftType {
+    DAY
+    NIGHT
+}
+
+enum ReadingType {
+    X_READING
+    Z_READING
+}
+
 // Cashier Shift
 model Shift {
     id           String      @id @default(uuid())
     outletId     String
     cashierId    String
+    type         ShiftType   @default(DAY)
     startingCash Decimal     @db.Decimal(12, 2)
     endingCash   Decimal?    @db.Decimal(12, 2)
     expectedCash Decimal?    @db.Decimal(12, 2)
@@ -1475,13 +1583,55 @@ model Shift {
     openedAt     DateTime    @default(now())
     closedAt     DateTime?
     notes        String?
-    outlet       SalesOutlet @relation(fields: [outletId], references: [id])
-    cashier      User        @relation("CashierShifts", fields: [cashierId], references: [id])
-    orders       POSOrder[]
+
+    // X/Z Reading tracking
+    xReadingCount  Int       @default(0)
+    lastXReadingAt DateTime?
+    zReadingAt     DateTime?
+
+    // Handover
+    handoverToId  String?
+    handoverTo    User?   @relation("ShiftHandover", fields: [handoverToId], references: [id])
+    handoverNotes String?
+
+    outlet   SalesOutlet    @relation(fields: [outletId], references: [id])
+    cashier  User           @relation("CashierShifts", fields: [cashierId], references: [id])
+    orders   POSOrder[]
+    readings ShiftReading[]
 
     @@index([outletId])
     @@index([cashierId])
     @@index([status])
+    @@index([type])
+}
+
+// Shift Reading (X and Z readings)
+model ShiftReading {
+    id            String      @id @default(uuid())
+    shiftId       String
+    type          ReadingType
+    readingNumber Int // Sequential number for this shift
+
+    // Snapshot at reading time
+    orderCount      Int
+    totalSales      Decimal @db.Decimal(12, 2)
+    cashSales       Decimal @db.Decimal(12, 2)
+    cardSales       Decimal @db.Decimal(12, 2)
+    roomChargeSales Decimal @db.Decimal(12, 2)
+    otherSales      Decimal @db.Decimal(12, 2)
+    voidCount       Int     @default(0)
+    voidAmount      Decimal @default(0) @db.Decimal(12, 2)
+    discountCount   Int     @default(0)
+    discountTotal   Decimal @default(0) @db.Decimal(12, 2)
+    refundAmount    Decimal @default(0) @db.Decimal(12, 2)
+
+    generatedById String
+    generatedBy   User     @relation("ReadingGenerator", fields: [generatedById], references: [id])
+    shift         Shift    @relation(fields: [shiftId], references: [id])
+    createdAt     DateTime @default(now())
+
+    @@index([shiftId])
+    @@index([type])
 }
 
 // -----------------------------------------------------------------------------

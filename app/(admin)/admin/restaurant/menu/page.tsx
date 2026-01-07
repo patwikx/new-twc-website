@@ -11,13 +11,20 @@ export default async function AdminMenuItemsPage() {
     redirect("/auth/login");
   }
 
-  // Get menu items with recipe information
+  // Get menu items with recipe and category information
   const menuItems = await db.menuItem.findMany({
     include: {
       property: {
         select: {
           id: true,
           name: true,
+        },
+      },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
         },
       },
       recipe: {
@@ -39,7 +46,7 @@ export default async function AdminMenuItemsPage() {
       },
     },
     orderBy: [
-      { category: "asc" },
+      { category: { name: "asc" } },
       { name: "asc" },
     ],
   });
@@ -95,11 +102,15 @@ export default async function AdminMenuItemsPage() {
     id: item.id,
     name: item.name,
     description: item.description,
-    category: item.category,
+    category: {
+      id: item.category.id,
+      name: item.category.name,
+      color: item.category.color,
+    },
     sellingPrice: Number(item.sellingPrice),
     isAvailable: item.isAvailable,
     unavailableReason: item.unavailableReason,
-    image: item.image,
+    imageUrl: item.imageUrl,
     propertyId: item.propertyId,
     propertyName: item.property.name,
     recipe: item.recipe ? {

@@ -65,11 +65,10 @@ const NAV_GROUPS = [
           icon: CreditCard,
           url: "/admin/pos",
           permission: "properties:view",
-          items: [
+           items: [
              { title: "Terminal", url: "/admin/pos" },
+             { title: "Order Taker", url: "/admin/order-taker" },
              { title: "Kitchen Display", url: "/admin/pos/kitchen" },
-             { title: "Outlets", url: "/admin/pos/outlets" },
-             { title: "Shifts", url: "/admin/pos/shifts" },
           ]
        },
        {
@@ -79,6 +78,7 @@ const NAV_GROUPS = [
           permission: "properties:view",
           items: [
              { title: "Menu Items", url: "/admin/restaurant/menu" },
+             { title: "Menu Categories", url: "/admin/pos/catalog/categories" },
              { title: "Recipes", url: "/admin/restaurant/recipes" },
              { title: "Stock Items", url: "/admin/inventory/items" },
           ]
@@ -116,6 +116,8 @@ const NAV_GROUPS = [
           items: [
              { title: "Properties", url: "/admin/properties" },
              { title: "Users & Roles", url: "/admin/users" },
+             { title: "Outlets", url: "/admin/pos/outlets" },
+             { title: "Shifts", url: "/admin/pos/shifts" },
              { title: "General Settings", url: "/admin/settings" },
           ]
        }

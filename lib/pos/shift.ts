@@ -164,7 +164,10 @@ export async function openShift(data: OpenShiftInput) {
 
     revalidatePath("/admin/pos");
     revalidatePath("/admin/pos/shifts");
-    return { success: true, data: shift };
+
+    // Serialize to plain object to avoid Decimal serialization errors
+    const serializedShift = JSON.parse(JSON.stringify(shift));
+    return { success: true, data: serializedShift };
   } catch (error) {
     console.error("Open Shift Error:", error);
     return { error: "Failed to open shift" };
@@ -261,7 +264,10 @@ export async function closeShift(data: CloseShiftInput) {
 
     revalidatePath("/admin/pos");
     revalidatePath("/admin/pos/shifts");
-    return { success: true, data: updatedShift };
+
+    // Serialize to plain object to avoid Decimal serialization errors
+    const serializedShift = JSON.parse(JSON.stringify(updatedShift));
+    return { success: true, data: serializedShift };
   } catch (error) {
     console.error("Close Shift Error:", error);
     return { error: "Failed to close shift" };
@@ -301,7 +307,7 @@ export async function getCurrentShift(cashierId: string) {
       },
     });
 
-    return shift;
+    return shift ? JSON.parse(JSON.stringify(shift)) : null;
   } catch (error) {
     console.error("Get Current Shift Error:", error);
     return null;
@@ -338,7 +344,7 @@ export async function getShiftById(shiftId: string) {
       },
     });
 
-    return shift;
+    return shift ? JSON.parse(JSON.stringify(shift)) : null;
   } catch (error) {
     console.error("Get Shift By ID Error:", error);
     return null;
@@ -428,8 +434,11 @@ export async function getShifts(query?: {
       db.shift.count({ where }),
     ]);
 
+    // Serialize to avoid Decimal serialization errors
+    const serializedShifts = JSON.parse(JSON.stringify(shifts));
+
     return {
-      shifts,
+      shifts: serializedShifts,
       pagination: {
         page,
         pageSize,

@@ -17,8 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Loader2, User as UserIcon, Calendar as CalendarIcon, DollarSign, LogOut, CheckCircle, AlertCircle, Sparkles, ArrowRightLeft,
-  Pencil, Printer, Trash2, Plus, Check, ChevronsUpDown
+  Loader2, User as UserIcon, Calendar as CalendarIcon, DollarSign, LogOut, Sparkles, ArrowRightLeft,
+  Pencil, Printer, Trash2, Plus, Check, ChevronsUpDown, CheckCircle, AlertCircle
 } from "lucide-react";
 import {
   Command,
@@ -116,7 +116,101 @@ export function UnitActionDialog({
   // Staff Selection State
   const [openStaffSelect, setOpenStaffSelect] = React.useState(false);
   
+  // Walk-in Calendar Availability State - per-day availability for the month
+  const [calendarMonth, setCalendarMonth] = React.useState<Date>(new Date());
+  const [dayAvailabilityMap, setDayAvailabilityMap] = React.useState<Map<string, {
+    available: boolean;
+    availableUnits: number;
+    totalUnits: number;
+  }>>(new Map());
+  const [calendarAvailabilityLoading, setCalendarAvailabilityLoading] = React.useState(false);
 
+  // Fetch availability for each day in the calendar month
+  React.useEffect(() => {
+    const fetchMonthAvailability = async () => {
+      if (!unit?.roomTypeId || !isOpen || activeTab !== 'walk-in' || processingBookingId) return;
+      
+      setCalendarAvailabilityLoading(true);
+      try {
+        // Generate checks for each day in the month (for 1-night stays)
+        const year = calendarMonth.getFullYear();
+        const month = calendarMonth.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        const checks = [];
+        for (let day = 1; day <= daysInMonth; day++) {
+          const checkIn = new Date(year, month, day);
+          const checkOut = addDays(checkIn, 1);
+          checks.push({
+            roomTypeId: unit.roomTypeId,
+            checkIn: checkIn.toISOString(),
+            checkOut: checkOut.toISOString()
+          });
+        }
+        
+        const response = await fetch('/api/availability/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ checks })
+        });
+        
+        if (response.ok) {
+          const results = await response.json();
+          const newMap = new Map<string, { available: boolean; availableUnits: number; totalUnits: number }>();
+          
+          results.forEach((result: any, index: number) => {
+            const dateKey = format(new Date(year, month, index + 1), 'yyyy-MM-dd');
+            newMap.set(dateKey, {
+              available: result.available,
+              availableUnits: result.availableUnits,
+              totalUnits: result.totalUnits
+            });
+          });
+          
+          setDayAvailabilityMap(newMap);
+        }
+      } catch (error) {
+        console.error('Error fetching month availability:', error);
+      } finally {
+        setCalendarAvailabilityLoading(false);
+      }
+    };
+    
+    fetchMonthAvailability();
+  }, [unit?.roomTypeId, calendarMonth, isOpen, activeTab, processingBookingId]);
+
+  // Helper to get availability for a specific date
+  const getDayAvailability = (date: Date) => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    return dayAvailabilityMap.get(dateKey);
+  };
+
+  // Get selected range availability (for the button disable logic)
+  const selectedRangeAvailability = React.useMemo(() => {
+    if (!walkInCheckIn || !walkInCheckOut) return null;
+    
+    // Check all days in the range
+    let minAvailable = Infinity;
+    let totalUnits = 0;
+    const currentDate = new Date(walkInCheckIn);
+    
+    while (currentDate < walkInCheckOut) {
+      const dayAvail = getDayAvailability(currentDate);
+      if (dayAvail) {
+        minAvailable = Math.min(minAvailable, dayAvail.availableUnits);
+        totalUnits = dayAvail.totalUnits;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    if (minAvailable === Infinity) return null;
+    
+    return {
+      available: minAvailable > 0,
+      availableUnits: minAvailable,
+      totalUnits
+    };
+  }, [walkInCheckIn, walkInCheckOut, dayAvailabilityMap]);
 
   // Calculation Helpers
   const nights = Math.max(1, differenceInDays(walkInCheckOut, walkInCheckIn));
@@ -136,9 +230,38 @@ export function UnitActionDialog({
   React.useEffect(() => {
     setActiveBooking(null);
     setFolioLoading(false);
-    // Reset other temporary states if needed
+    // Reset charge/payment states
     setChargeAmount("");
     setPayAmount("");
+    setPaymentRef("");
+    setChargeDesc("");
+    setChargeRemarks("");
+    
+    // Reset walk-in form states
+    setWalkInGuest({ name: "", email: "", phone: "", address: "" });
+    setIdScans([]);
+    setWalkInCheckIn(new Date());
+    setWalkInCheckOut(addDays(new Date(), 1));
+    setProcessingBookingId(null);
+    setAddChargeAmount(0);
+    setAddChargeType("");
+    setInitialPayment(0);
+    setInitialPaymentMethod("CASH");
+    setInitialPaymentRef("");
+    
+    // Reset other dialog states
+    setShowCheckoutDialog(false);
+    setConfirmCheckInOpen(false);
+    setSelectedCheckInBookingId(null);
+    setShowTransferDialog(false);
+    setTransferTargetId("");
+    setTransferReason("");
+    setEditGuestOpen(false);
+    setExtendStayOpen(false);
+    // Reset availability state
+    setDayAvailabilityMap(new Map());
+    setCalendarAvailabilityLoading(false);
+    setCalendarMonth(new Date());
   }, [unit?.id, isOpen]);
 
   // Fetch active booking data when opening "Manage" tab
@@ -724,7 +847,7 @@ export function UnitActionDialog({
                        </div>
                  </div>
 
-                 {/* Date Pickers */}
+                 {/* Date Pickers with Availability Indicators */}
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                        <Label>Check-in Date <span className="text-red-500">*</span></Label>
@@ -735,8 +858,75 @@ export function UnitActionDialog({
                                 {walkInCheckIn ? format(walkInCheckIn, "PPP") : "Pick a date"}
                              </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-neutral-950 border-white/10">
-                             <Calendar mode="single" selected={walkInCheckIn} onSelect={(d) => d && setWalkInCheckIn(d)} initialFocus />
+                          <PopoverContent className="w-auto p-0 bg-neutral-950 border-white/10" align="start">
+                             <div className="p-2 pb-0 border-b border-white/10">
+                               <div className="flex items-center gap-4 text-xs text-neutral-400 pb-2">
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Available</span>
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Limited</span>
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Full</span>
+                               </div>
+                             </div>
+                             <Calendar 
+                               mode="single" 
+                               selected={walkInCheckIn} 
+                               onSelect={(d) => d && setWalkInCheckIn(d)} 
+                               onMonthChange={setCalendarMonth}
+                               month={calendarMonth}
+                               initialFocus 
+                               components={{
+                                 DayButton: ({ day, modifiers, ...props }) => {
+                                   const date = day.date;
+                                   const dayAvail = getDayAvailability(date);
+                                   const isPast = date < new Date(new Date().setHours(0,0,0,0));
+                                   const isSelected = modifiers.selected;
+                                   
+                                   let dotColor = '';
+                                   
+                                   if (!isPast && dayAvail) {
+                                     if (!dayAvail.available) {
+                                       dotColor = 'bg-red-500';
+                                     } else if (dayAvail.availableUnits <= 2) {
+                                       dotColor = 'bg-orange-500';
+                                     } else {
+                                       dotColor = 'bg-green-500';
+                                     }
+                                   }
+                                   
+                                   return (
+                                     <Button
+                                       variant="ghost"
+                                       size="icon"
+                                       disabled={isPast || (!!dayAvail && !dayAvail.available)}
+                                       className={cn(
+                                         "relative h-9 w-9 p-0 font-normal rounded-md",
+                                         isSelected && "bg-white text-black hover:bg-white/90",
+                                         !isSelected && modifiers.today && "bg-neutral-800",
+                                         isPast && "text-neutral-600 opacity-50",
+                                         !isPast && dayAvail && !dayAvail.available && "text-red-400/50 line-through opacity-50",
+                                         !isPast && !isSelected && "hover:bg-neutral-800"
+                                       )}
+                                       onClick={() => {
+                                         if (!isPast && (!dayAvail || dayAvail.available)) {
+                                           setWalkInCheckIn(date);
+                                           if (date >= walkInCheckOut) {
+                                             setWalkInCheckOut(addDays(date, 1));
+                                           }
+                                         }
+                                       }}
+                                       {...props}
+                                     >
+                                       <span className="text-sm">{date.getDate()}</span>
+                                       {dotColor && <span className={cn("absolute bottom-0.5 w-1.5 h-1.5 rounded-full", dotColor)}></span>}
+                                     </Button>
+                                   );
+                                 }
+                               }}
+                             />
+                             {calendarAvailabilityLoading && (
+                               <div className="flex items-center justify-center gap-2 p-2 text-xs text-neutral-400 border-t border-white/10">
+                                 <Loader2 className="h-3 w-3 animate-spin" /> Loading availability...
+                               </div>
+                             )}
                           </PopoverContent>
                        </Popover>
                     </div>
@@ -749,12 +939,83 @@ export function UnitActionDialog({
                                 {walkInCheckOut ? format(walkInCheckOut, "PPP") : "Pick a date"}
                              </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-neutral-950 border-white/10">
-                             <Calendar mode="single" selected={walkInCheckOut} onSelect={(d) => d && setWalkInCheckOut(d)} disabled={(date) => date < walkInCheckIn} initialFocus />
+                          <PopoverContent className="w-auto p-0 bg-neutral-950 border-white/10" align="start">
+                             <div className="p-2 pb-0 border-b border-white/10">
+                               <div className="flex items-center gap-4 text-xs text-neutral-400 pb-2">
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Available</span>
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Limited</span>
+                                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Full</span>
+                               </div>
+                             </div>
+                             <Calendar 
+                               mode="single" 
+                               selected={walkInCheckOut} 
+                               onSelect={(d) => d && setWalkInCheckOut(d)} 
+                               onMonthChange={setCalendarMonth}
+                               month={calendarMonth}
+                               initialFocus 
+                               components={{
+                                 DayButton: ({ day, modifiers, ...props }) => {
+                                   const date = day.date;
+                                   const dayAvail = getDayAvailability(date);
+                                   const isBeforeCheckIn = date <= walkInCheckIn;
+                                   const isSelected = modifiers.selected;
+                                   
+                                   let dotColor = '';
+                                   
+                                   if (!isBeforeCheckIn) {
+                                     // For checkout, show availability of the day BEFORE (since checkout day doesn't require a room)
+                                     const prevDate = addDays(date, -1);
+                                     const prevDayAvail = getDayAvailability(prevDate);
+                                     if (prevDayAvail) {
+                                       if (!prevDayAvail.available) {
+                                         dotColor = 'bg-red-500';
+                                       } else if (prevDayAvail.availableUnits <= 2) {
+                                         dotColor = 'bg-orange-500';
+                                       } else {
+                                         dotColor = 'bg-green-500';
+                                       }
+                                     }
+                                   }
+                                   
+                                   return (
+                                     <Button
+                                       variant="ghost"
+                                       size="icon"
+                                       disabled={isBeforeCheckIn}
+                                       className={cn(
+                                         "relative h-9 w-9 p-0 font-normal rounded-md",
+                                         isSelected && "bg-white text-black hover:bg-white/90",
+                                         !isSelected && modifiers.today && "bg-neutral-800",
+                                         isBeforeCheckIn && "text-neutral-600 opacity-50",
+                                         !isBeforeCheckIn && !isSelected && "hover:bg-neutral-800"
+                                       )}
+                                       onClick={() => {
+                                         if (!isBeforeCheckIn) {
+                                           setWalkInCheckOut(date);
+                                         }
+                                       }}
+                                       {...props}
+                                     >
+                                       <span className="text-sm">{date.getDate()}</span>
+                                       {dotColor && <span className={cn("absolute bottom-0.5 w-1.5 h-1.5 rounded-full", dotColor)}></span>}
+                                     </Button>
+                                   );
+                                 }
+                               }}
+                             />
+                             {calendarAvailabilityLoading && (
+                               <div className="flex items-center justify-center gap-2 p-2 text-xs text-neutral-400 border-t border-white/10">
+                                 <Loader2 className="h-3 w-3 animate-spin" /> Loading availability...
+                               </div>
+                             )}
                           </PopoverContent>
                        </Popover>
                     </div>
                  </div>
+
+                 {/* Selected Range Availability Summary */}
+
 
                  {/* Pricing */}
                  <div className="grid grid-cols-2 gap-4">
@@ -856,9 +1117,19 @@ export function UnitActionDialog({
                     </div>
                  </div>
 
-                 <Button onClick={handleWalkIn} disabled={loading || !walkInGuest.name} className="w-full bg-orange-600 hover:bg-orange-700">
+                 <Button 
+                   onClick={handleWalkIn} 
+                   disabled={
+                     loading || 
+                     !walkInGuest.name || 
+                     !walkInGuest.phone ||
+                     // Disable for new walk-ins if room is not available
+                     (!processingBookingId && !!selectedRangeAvailability && !selectedRangeAvailability.available)
+                   } 
+                   className="w-full bg-orange-600 hover:bg-orange-700"
+                 >
                     {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Complete Walk-In
+                    {processingBookingId ? "Complete Check-In" : "Complete Walk-In"}
                  </Button>
               </div>
            </TabsContent>

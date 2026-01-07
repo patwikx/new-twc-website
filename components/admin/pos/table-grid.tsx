@@ -24,7 +24,7 @@ import { Plus, Search, LayoutGrid, List, Loader2 } from "lucide-react";
 import { POSTableStatus } from "@prisma/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { createTable, updateTableStatus } from "@/lib/pos/table";
+import { createTable, updateTableStatus, forceClearTable } from "@/lib/pos/table";
 
 interface TableOrder {
   id: string;
@@ -32,6 +32,7 @@ interface TableOrder {
   status: string;
   total: number;
   createdAt: Date;
+  customerName?: string | null;
 }
 
 interface TableData {
@@ -147,7 +148,15 @@ export function TableGrid({
 
   const handleStatusChange = async (tableId: string, newStatus: POSTableStatus) => {
     try {
-      const result = await updateTableStatus(tableId, newStatus);
+      // Check for Override (Occupied -> Available)
+      const table = tables.find(t => t.id === tableId);
+      let result;
+
+      if (newStatus === "AVAILABLE" && table?.status === "OCCUPIED") {
+         result = await forceClearTable(tableId);
+      } else {
+         result = await updateTableStatus(tableId, newStatus);
+      }
 
       if (result.error) {
         toast.error(result.error);

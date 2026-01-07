@@ -140,7 +140,7 @@ export async function getKitchenOrders(
           id: item.id,
           menuItemId: item.menuItemId,
           menuItemName: item.menuItem.name,
-          category: item.menuItem.category,
+          category: typeof item.menuItem.category === 'string' ? item.menuItem.category : item.menuItem.category.name,
           quantity: item.quantity,
           modifiers: item.modifiers,
           notes: item.notes,
@@ -290,7 +290,14 @@ export async function markItemPreparing(itemId: string) {
     revalidatePath("/admin/pos/kitchen");
     revalidatePath(`/admin/pos/orders/${orderItem.order.id}`);
     
-    return { success: true, data: updatedItem };
+    // Serialize Decimal to Number for client components
+    return { 
+      success: true, 
+      data: {
+        ...updatedItem,
+        unitPrice: Number(updatedItem.unitPrice),
+      }
+    };
   } catch (error) {
     console.error("Mark Item Preparing Error:", error);
     return { error: "Failed to mark item as preparing" };
@@ -384,7 +391,14 @@ export async function markItemReady(itemId: string) {
     revalidatePath("/admin/pos/kitchen");
     revalidatePath(`/admin/pos/orders/${orderItem.order.id}`);
     
-    return { success: true, data: updatedItem };
+    // Serialize Decimal to Number for client components
+    return { 
+      success: true, 
+      data: {
+        ...updatedItem,
+        unitPrice: Number(updatedItem.unitPrice),
+      }
+    };
   } catch (error) {
     console.error("Mark Item Ready Error:", error);
     return { error: "Failed to mark item as ready" };
@@ -646,7 +660,14 @@ export async function cancelKitchenItem(itemId: string, reason?: string) {
     revalidatePath("/admin/pos/kitchen");
     revalidatePath(`/admin/pos/orders/${orderItem.order.id}`);
     
-    return { success: true, data: updatedItem };
+    // Serialize Decimal to Number for client components
+    return { 
+      success: true, 
+      data: {
+        ...updatedItem,
+        unitPrice: Number(updatedItem.unitPrice),
+      }
+    };
   } catch (error) {
     console.error("Cancel Kitchen Item Error:", error);
     return { error: "Failed to cancel item" };
