@@ -124,6 +124,11 @@ export function OrderEntry({
      }
   }, [isCustomerDialogOpen]);
 
+  // Clear ready orders when switching outlets
+  React.useEffect(() => {
+      setReadyOrders([]);
+  }, [outletId]);
+
   // Socket.io listeners for real-time sync
   React.useEffect(() => {
     const unsubTableUpdate = onTableUpdate((data) => {
@@ -156,10 +161,17 @@ export function OrderEntry({
       if (data.action === "item_ready" && data.data) {
         // data.data is the order item with order and table
         const item = data.data;
+        
+        // Defensive check: Ensure menuItem exists
+        if (!item?.menuItem) {
+            console.warn("[Socket] Received item_ready without menuItem:", item);
+            return;
+        }
+
         // Transform to ReadyItem
         const readyItem: ReadyItem = {
            id: item.id,
-           name: item.menuItem.name,
+           name: item.menuItem.name || "Unknown Item",
            quantity: item.quantity,
            tableNumber: item.order?.table?.number || null,
            orderNumber: item.order?.orderNumber || "Unknown",
@@ -182,7 +194,7 @@ export function OrderEntry({
       unsubRefreshAll();
       unsubKitchenUpdate();
     };
-  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, router, currentOrder?.id]);
+  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate, outletId, router, currentOrder?.id]);
 
   // Load discount types on mount
   // Load discount types on mount
