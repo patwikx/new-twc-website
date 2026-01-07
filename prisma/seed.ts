@@ -231,6 +231,195 @@ const EXPERIENCES = [
 ];
 
 // ============================================================================
+// MENU CATEGORIES
+// ============================================================================
+
+const MENU_CATEGORIES = [
+  { name: "Appetizers", description: "Start your meal with these delicious starters", color: "green", icon: "Salad", sortOrder: 1 },
+  { name: "Soups & Salads", description: "Fresh and healthy options", color: "cyan", icon: "Salad", sortOrder: 2 },
+  { name: "Main Course", description: "Hearty main dishes", color: "orange", icon: "UtensilsCrossed", sortOrder: 3 },
+  { name: "Pasta & Rice", description: "Carb-loaded favorites", color: "yellow", icon: "Pizza", sortOrder: 4 },
+  { name: "Grilled & BBQ", description: "Fire-grilled specialties", color: "red", icon: "UtensilsCrossed", sortOrder: 5 },
+  { name: "Seafood", description: "Fresh catch from the sea", color: "blue", icon: "UtensilsCrossed", sortOrder: 6 },
+  { name: "Desserts", description: "Sweet endings", color: "pink", icon: "IceCream", sortOrder: 7 },
+  { name: "Beverages", description: "Refreshing drinks", color: "cyan", icon: "Coffee", sortOrder: 8 },
+  { name: "Coffee & Tea", description: "Hot and iced beverages", color: "purple", icon: "Coffee", sortOrder: 9 },
+  { name: "Alcoholic Drinks", description: "Beer, wine, and cocktails", color: "purple", icon: "Wine", sortOrder: 10 },
+];
+
+// ============================================================================
+// MENU ITEMS - Organized by category with images
+// ============================================================================
+
+const MENU_ITEMS = {
+  "Appetizers": [
+    { name: "Crispy Calamari", description: "Deep-fried squid rings served with garlic aioli", price: 285, hasRecipe: true, image: "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=400&h=300&fit=crop" },
+    { name: "Nachos Supreme", description: "Corn chips topped with cheese, jalapeños, salsa, and sour cream", price: 245, hasRecipe: true, image: "https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=400&h=300&fit=crop" },
+    { name: "Spring Rolls", description: "Crispy vegetable spring rolls with sweet chili sauce", price: 165, hasRecipe: true, image: "https://images.unsplash.com/photo-1548507200-d6b2e9a95e89?w=400&h=300&fit=crop" },
+    { name: "Chicken Wings", description: "Crispy buffalo wings with blue cheese dip", price: 295, hasRecipe: true, image: "https://images.unsplash.com/photo-1608039755401-742074f0548d?w=400&h=300&fit=crop" },
+    { name: "Garlic Bread", description: "Toasted baguette with garlic butter and herbs", price: 95, hasRecipe: true, image: "https://images.unsplash.com/photo-1619535860434-ba1d8fa12536?w=400&h=300&fit=crop" },
+  ],
+  "Soups & Salads": [
+    { name: "Caesar Salad", description: "Romaine lettuce, parmesan, croutons with caesar dressing", price: 225, hasRecipe: true, image: "https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=400&h=300&fit=crop" },
+    { name: "Cream of Mushroom Soup", description: "Rich and creamy mushroom soup", price: 145, hasRecipe: true, image: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=400&h=300&fit=crop" },
+    { name: "Garden Salad", description: "Fresh mixed greens with balsamic vinaigrette", price: 185, hasRecipe: false, image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop" },
+    { name: "Sinigang na Hipon", description: "Traditional sour soup with shrimp and vegetables", price: 295, hasRecipe: true, image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&h=300&fit=crop" },
+  ],
+  "Main Course": [
+    { name: "Grilled Salmon", description: "Atlantic salmon with lemon butter sauce and vegetables", price: 485, hasRecipe: true, image: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&h=300&fit=crop" },
+    { name: "Chicken Cordon Bleu", description: "Breaded chicken stuffed with ham and cheese", price: 365, hasRecipe: true, image: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=400&h=300&fit=crop" },
+    { name: "Beef Steak", description: "200g ribeye steak with mushroom gravy", price: 595, hasRecipe: true, image: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&h=300&fit=crop" },
+    { name: "Pork Belly Lechon", description: "Crispy roasted pork belly with liver sauce", price: 385, hasRecipe: true, image: "https://images.unsplash.com/photo-1623653387945-2fd25214f8fc?w=400&h=300&fit=crop" },
+    { name: "Fish and Chips", description: "Beer-battered fish fillet with fries and tartar sauce", price: 345, hasRecipe: true, image: "https://images.unsplash.com/photo-1579208030886-b937da0925dc?w=400&h=300&fit=crop" },
+  ],
+  "Pasta & Rice": [
+    { name: "Carbonara", description: "Creamy pasta with bacon and parmesan", price: 265, hasRecipe: true, image: "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&h=300&fit=crop" },
+    { name: "Beef Lasagna", description: "Layered pasta with beef ragu and bechamel", price: 295, hasRecipe: true, image: "https://images.unsplash.com/photo-1574894709920-11b28e7367e3?w=400&h=300&fit=crop" },
+    { name: "Garlic Fried Rice", description: "Aromatic fried rice with garlic chips", price: 95, hasRecipe: true, image: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400&h=300&fit=crop" },
+    { name: "Yangchow Fried Rice", description: "Classic Chinese fried rice with shrimp and ham", price: 185, hasRecipe: true, image: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop" },
+    { name: "Spaghetti Bolognese", description: "Pasta with Italian meat sauce", price: 245, hasRecipe: true, image: "https://images.unsplash.com/photo-1626844131282-9a2e648b5b95?w=400&h=300&fit=crop" },
+  ],
+  "Grilled & BBQ": [
+    { name: "BBQ Pork Ribs", description: "Full rack of tender pork ribs with BBQ sauce", price: 495, hasRecipe: true, image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=300&fit=crop" },
+    { name: "Grilled Chicken", description: "Half chicken marinated in herbs and spices", price: 325, hasRecipe: true, image: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?w=400&h=300&fit=crop" },
+    { name: "Mixed Grill Platter", description: "Assorted grilled meats for sharing", price: 895, hasRecipe: false, image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400&h=300&fit=crop" },
+    { name: "Inihaw na Liempo", description: "Filipino-style grilled pork belly", price: 285, hasRecipe: true, image: "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=400&h=300&fit=crop" },
+  ],
+  "Seafood": [
+    { name: "Grilled Tuna Belly", description: "Fresh tuna belly with garlic rice", price: 425, hasRecipe: true, image: "https://images.unsplash.com/photo-1580476262798-bddd9f4b7369?w=400&h=300&fit=crop" },
+    { name: "Butter Garlic Shrimp", description: "Prawns sautéed in butter and garlic", price: 385, hasRecipe: true, image: "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=400&h=300&fit=crop" },
+    { name: "Crispy Pata", description: "Deep-fried pork leg served with soy-vinegar dip", price: 595, hasRecipe: true, image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=300&fit=crop" },
+    { name: "Kare-Kare", description: "Traditional oxtail stew in peanut sauce", price: 445, hasRecipe: true, image: "https://images.unsplash.com/photo-1547928576-b822bc410e41?w=400&h=300&fit=crop" },
+  ],
+  "Desserts": [
+    { name: "Halo-Halo", description: "Filipino shaved ice with mixed toppings", price: 145, hasRecipe: false, image: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=300&fit=crop" },
+    { name: "Leche Flan", description: "Creamy caramel custard", price: 95, hasRecipe: true, image: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=300&fit=crop" },
+    { name: "Chocolate Lava Cake", description: "Warm chocolate cake with molten center", price: 175, hasRecipe: true, image: "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=300&fit=crop" },
+    { name: "Mango Float", description: "Layered graham, cream, and ripe mangoes", price: 125, hasRecipe: true, image: "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=400&h=300&fit=crop" },
+    { name: "Buko Pandan", description: "Coconut and pandan jelly dessert", price: 85, hasRecipe: true, image: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=300&fit=crop" },
+  ],
+  "Beverages": [
+    { name: "Iced Tea", description: "House-brewed iced tea", price: 55, hasRecipe: false, image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop" },
+    { name: "Calamansi Juice", description: "Fresh Philippine lime juice", price: 65, hasRecipe: false, image: "https://images.unsplash.com/photo-1621263764928-df1444c5e859?w=400&h=300&fit=crop" },
+    { name: "Mango Shake", description: "Fresh mango blended with ice", price: 95, hasRecipe: false, image: "https://images.unsplash.com/photo-1623065422902-30a2d299bbe4?w=400&h=300&fit=crop" },
+    { name: "Soft Drinks", description: "Coke, Sprite, or Royal", price: 45, hasRecipe: false, image: "https://images.unsplash.com/photo-1581006852262-e4307cf6283a?w=400&h=300&fit=crop" },
+    { name: "Bottled Water", description: "500ml purified water", price: 35, hasRecipe: false, image: "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=400&h=300&fit=crop" },
+    { name: "Fresh Buko Juice", description: "Refreshing young coconut water", price: 75, hasRecipe: false, image: "https://images.unsplash.com/photo-1536657464919-892534f60d6e?w=400&h=300&fit=crop" },
+  ],
+  "Coffee & Tea": [
+    { name: "Brewed Coffee", description: "Freshly brewed local coffee", price: 85, hasRecipe: false, image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop" },
+    { name: "Cappuccino", description: "Espresso with steamed milk foam", price: 125, hasRecipe: false, image: "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=300&fit=crop" },
+    { name: "Café Latte", description: "Espresso with steamed milk", price: 115, hasRecipe: false, image: "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=300&fit=crop" },
+    { name: "Hot Chocolate", description: "Rich and creamy hot cocoa", price: 95, hasRecipe: false, image: "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400&h=300&fit=crop" },
+    { name: "Green Tea", description: "Japanese green tea", price: 75, hasRecipe: false, image: "https://images.unsplash.com/photo-1627435601361-ec25f5b1d0e5?w=400&h=300&fit=crop" },
+  ],
+  "Alcoholic Drinks": [
+    { name: "San Miguel Pale Pilsen", description: "Local beer 330ml", price: 85, hasRecipe: false, image: "https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&h=300&fit=crop" },
+    { name: "San Miguel Light", description: "Light beer 330ml", price: 85, hasRecipe: false, image: "https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=400&h=300&fit=crop" },
+    { name: "Red Horse", description: "Strong beer 500ml", price: 95, hasRecipe: false, image: "https://images.unsplash.com/photo-1618885472179-5e474019f2a9?w=400&h=300&fit=crop" },
+    { name: "House Red Wine", description: "Glass of red wine", price: 185, hasRecipe: false, image: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=300&fit=crop" },
+    { name: "House White Wine", description: "Glass of white wine", price: 185, hasRecipe: false, image: "https://images.unsplash.com/photo-1558001373-7b93ee48ffa0?w=400&h=300&fit=crop" },
+    { name: "Margarita", description: "Classic tequila cocktail", price: 225, hasRecipe: false, image: "https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=400&h=300&fit=crop" },
+  ],
+};
+
+// ============================================================================
+// RECIPES - Simple recipes for items that have hasRecipe: true
+// ============================================================================
+
+const RECIPES = [
+  {
+    name: "Crispy Calamari",
+    description: "Deep-fried squid rings with seasoned batter",
+    yield: 1,
+    yieldUnit: "pc",
+    prepTimeMinutes: 15,
+    cookTimeMinutes: 5,
+    instructions: "1. Clean and slice squid into rings. 2. Dredge in seasoned flour. 3. Deep fry at 180°C until golden. 4. Serve with garlic aioli.",
+    ingredients: [
+      { name: "Squid", quantity: 200, unit: "g" },
+      { name: "All-purpose Flour", quantity: 100, unit: "g" },
+      { name: "Cooking Oil", quantity: 500, unit: "mL" },
+    ],
+  },
+  {
+    name: "Caesar Salad",
+    description: "Classic caesar salad with homemade dressing",
+    yield: 1,
+    yieldUnit: "pc",
+    prepTimeMinutes: 10,
+    cookTimeMinutes: 0,
+    instructions: "1. Wash and chop romaine lettuce. 2. Add croutons and parmesan. 3. Toss with caesar dressing.",
+    ingredients: [
+      { name: "Romaine Lettuce", quantity: 150, unit: "g" },
+      { name: "Parmesan Cheese", quantity: 30, unit: "g" },
+      { name: "Caesar Dressing", quantity: 50, unit: "mL" },
+    ],
+  },
+  {
+    name: "Carbonara",
+    description: "Creamy Italian pasta with bacon",
+    yield: 1,
+    yieldUnit: "pc",
+    prepTimeMinutes: 10,
+    cookTimeMinutes: 15,
+    instructions: "1. Cook pasta al dente. 2. Fry bacon until crispy. 3. Mix eggs with parmesan. 4. Combine all with pasta, stirring off heat.",
+    ingredients: [
+      { name: "Spaghetti Pasta", quantity: 120, unit: "g" },
+      { name: "Bacon", quantity: 50, unit: "g" },
+      { name: "Egg", quantity: 2, unit: "pc" },
+      { name: "Parmesan Cheese", quantity: 40, unit: "g" },
+      { name: "Heavy Cream", quantity: 50, unit: "mL" },
+    ],
+  },
+  {
+    name: "Leche Flan",
+    description: "Filipino caramel custard",
+    yield: 6,
+    yieldUnit: "pc",
+    prepTimeMinutes: 20,
+    cookTimeMinutes: 45,
+    instructions: "1. Make caramel with sugar. 2. Mix eggs, milk, and vanilla. 3. Pour over caramel. 4. Steam for 45 minutes.",
+    ingredients: [
+      { name: "Egg", quantity: 10, unit: "pc" },
+      { name: "Condensed Milk", quantity: 1, unit: "can" },
+      { name: "Evaporated Milk", quantity: 1, unit: "can" },
+      { name: "White Sugar", quantity: 150, unit: "g" },
+    ],
+  },
+  {
+    name: "Grilled Tuna Belly",
+    description: "Fresh tuna belly grilled to perfection",
+    yield: 1,
+    yieldUnit: "pc",
+    prepTimeMinutes: 10,
+    cookTimeMinutes: 10,
+    instructions: "1. Marinate tuna in soy sauce and calamansi. 2. Grill on high heat for 5 minutes per side. 3. Serve with garlic rice.",
+    ingredients: [
+      { name: "Tuna Belly", quantity: 200, unit: "g" },
+      { name: "Soy Sauce", quantity: 30, unit: "mL" },
+      { name: "Calamansi", quantity: 3, unit: "pc" },
+      { name: "Garlic", quantity: 5, unit: "g" },
+    ],
+  },
+  {
+    name: "Garlic Fried Rice",
+    description: "Aromatic fried rice with crispy garlic",
+    yield: 1,
+    yieldUnit: "pc",
+    prepTimeMinutes: 5,
+    cookTimeMinutes: 5,
+    instructions: "1. Fry minced garlic until golden. 2. Add day-old rice and stir-fry. 3. Season with salt.",
+    ingredients: [
+      { name: "Cooked Rice", quantity: 200, unit: "g" },
+      { name: "Garlic", quantity: 20, unit: "g" },
+      { name: "Cooking Oil", quantity: 30, unit: "mL" },
+      { name: "Salt", quantity: 2, unit: "g" },
+    ],
+  },
+];
+
+// ============================================================================
 // MAIN SEED FUNCTION
 // ============================================================================
 
@@ -457,6 +646,136 @@ async function main() {
   console.log(`   ✅ ${COUPONS.length} coupons created.\n`);
 
   // -------------------------------------------------------------------------
+  // 9. MENU CATEGORIES (Global - available to all properties)
+  // -------------------------------------------------------------------------
+  console.log("🍽️  Seeding Menu Categories...");
+  const categoryMap: Record<string, string> = {};
+  for (const cat of MENU_CATEGORIES) {
+    // Use composite unique constraint: propertyId + name (null + name for global)
+    const existing = await prisma.menuCategory.findFirst({
+      where: { propertyId: null, name: cat.name },
+    });
+    
+    if (existing) {
+      await prisma.menuCategory.update({
+        where: { id: existing.id },
+        data: { description: cat.description, color: cat.color, icon: cat.icon, sortOrder: cat.sortOrder },
+      });
+      categoryMap[cat.name] = existing.id;
+    } else {
+      const created = await prisma.menuCategory.create({
+        data: {
+          name: cat.name,
+          description: cat.description,
+          color: cat.color,
+          icon: cat.icon,
+          sortOrder: cat.sortOrder,
+          propertyId: null, // Global category
+          isActive: true,
+        },
+      });
+      categoryMap[cat.name] = created.id;
+    }
+  }
+  console.log(`   ✅ ${MENU_CATEGORIES.length} menu categories created.\n`);
+
+  // -------------------------------------------------------------------------
+  // 10. RECIPES
+  // -------------------------------------------------------------------------
+  console.log("👨‍🍳 Seeding Recipes...");
+  const recipeMap: Record<string, string> = {};
+  for (const recipe of RECIPES) {
+    // Get unit ID
+    const yieldUnit = await prisma.unitOfMeasure.findFirst({
+      where: { abbreviation: recipe.yieldUnit },
+    });
+    
+    if (!yieldUnit) {
+      console.log(`   ⚠️ Unit ${recipe.yieldUnit} not found, skipping recipe ${recipe.name}`);
+      continue;
+    }
+    
+    const existing = await prisma.recipe.findFirst({
+      where: { name: recipe.name },
+    });
+    
+    if (existing) {
+      recipeMap[recipe.name] = existing.id;
+      continue; // Skip if already exists
+    }
+    
+    const created = await prisma.recipe.create({
+      data: {
+        name: recipe.name,
+        description: recipe.description,
+        yield: recipe.yield,
+        yieldUnitId: yieldUnit.id,
+        prepTimeMinutes: recipe.prepTimeMinutes,
+        cookTimeMinutes: recipe.cookTimeMinutes,
+        instructions: recipe.instructions,
+        isActive: true,
+        minimumServingsThreshold: 5,
+      },
+    });
+    recipeMap[recipe.name] = created.id;
+  }
+  console.log(`   ✅ ${RECIPES.length} recipes created.\n`);
+
+  // -------------------------------------------------------------------------
+  // 11. MENU ITEMS (Created for each property)
+  // -------------------------------------------------------------------------
+  console.log("🍔 Seeding Menu Items...");
+  let totalMenuItems = 0;
+  
+  // Get all properties
+  const allProperties = await prisma.property.findMany({ select: { id: true, name: true } });
+  
+  for (const property of allProperties) {
+    for (const [categoryName, items] of Object.entries(MENU_ITEMS)) {
+      const categoryId = categoryMap[categoryName];
+      if (!categoryId) {
+        console.log(`   ⚠️ Category ${categoryName} not found, skipping items`);
+        continue;
+      }
+      
+      for (const item of items) {
+        // Check if menu item already exists for this property
+        const existing = await prisma.menuItem.findFirst({
+          where: { propertyId: property.id, name: item.name },
+        });
+        
+        // Get recipe ID if applicable
+        const recipeId = item.hasRecipe && recipeMap[item.name] ? recipeMap[item.name] : null;
+
+        if (existing) {
+          // Update existing item with image if provided
+          if (item.image) {
+             await prisma.menuItem.update({
+               where: { id: existing.id },
+               data: { imageUrl: item.image, recipeId: recipeId },
+             });
+          }
+        } else {
+          await prisma.menuItem.create({
+            data: {
+              propertyId: property.id,
+              categoryId: categoryId,
+              name: item.name,
+              description: item.description,
+              sellingPrice: item.price,
+              recipeId: recipeId,
+              imageUrl: item.image || null,
+              isAvailable: true,
+            },
+          });
+          totalMenuItems++;
+        }
+      }
+    }
+  }
+  console.log(`   ✅ ${totalMenuItems} menu items created across ${allProperties.length} properties.\n`);
+
+  // -------------------------------------------------------------------------
   // DONE
   // -------------------------------------------------------------------------
   console.log("🎉 Database seeding complete!");
@@ -469,6 +788,9 @@ async function main() {
   console.log(`   • ${PROPERTIES.length} properties with ${totalRooms} rooms`);
   console.log(`   • ${EXPERIENCES.length} experiences`);
   console.log(`   • ${COUPONS.length} coupons`);
+  console.log(`   • ${MENU_CATEGORIES.length} menu categories`);
+  console.log(`   • ${RECIPES.length} recipes`);
+  console.log(`   • ${totalMenuItems} menu items`);
   console.log("\n🔐 Default login: admin@twc.com / Password123!");
 }
 

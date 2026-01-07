@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { POSTableStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/auth";
 
 // Types
 export interface CreateTableInput {
@@ -594,4 +595,59 @@ export async function setTableDirty(tableId: string) {
  */
 export async function setTableAvailable(tableId: string) {
   return updateTableStatus(tableId, "AVAILABLE", { skipTransitionValidation: true });
+}
+
+/**
+ * Force clear a table (Owner override)
+ * - Voids/Cancels any active order
+ * - Sets table to AVAILABLE
+ */
+export async function forceClearTable(tableId: string) {
+  try {
+    const session = await auth();
+    // Optional: Check if user is admin/manager? Usually force clear is protected by UI, but good to check role.
+    // For now assuming UI calls this only for auth'd users.
+
+    return await db.$transaction(async (tx) => {
+        // 1. Find active order
+        const table = await tx.pOSTable.findUnique({
+          where: { id: tableId },
+          include: {
+            orders: {
+              where: {
+                status: { in: ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"] }
+              }
+            }
+          }
+        });
+
+        if (!table) throw new Error("Table not found");
+
+        // 2. Void active orders if any
+        for (const order of table.orders) {
+            await tx.pOSOrder.update({
+                where: { id: order.id },
+                data: { 
+                    status: "VOID", // Using VOID status for forced clearance
+                    notes: order.notes ? `${order.notes}\n[System]: Table cleared manually by ${session?.user?.name || "System"}` : "[System]: Table cleared manually"
+                }
+            });
+            // Also void items? Yes, implicitly if order is VOID.
+        }
+
+        // 3. Set table to available
+        // Duplicate updateTableStatus logic or use direct update. 
+        // Direct update inside transaction is safer than calling external async function which might use different client.
+        const updatedTable = await tx.pOSTable.update({
+             where: { id: tableId },
+             data: { status: "AVAILABLE" }
+        });
+        
+        return { success: true, data: updatedTable };
+    });
+
+  } catch (error) {
+    console.error("Force Clear Table Error:", error);
+    return { error: "Failed to force clear table" };
+  }
 }

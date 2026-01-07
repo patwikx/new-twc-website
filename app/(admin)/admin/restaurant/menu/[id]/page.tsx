@@ -19,6 +19,11 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
 
   const { id } = await params;
 
+  // Get current property scope from cookie
+  const cookieStore = await cookies();
+  const currentScope = cookieStore.get("admin_property_scope")?.value;
+  const currentPropertyId = currentScope && currentScope !== "ALL" ? currentScope : null;
+
   // Get the menu item
   const menuItem = await db.menuItem.findUnique({
     where: { id },
@@ -29,11 +34,20 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
           name: true,
         },
       },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          icon: true,
+        },
+      },
       recipe: {
         select: {
           id: true,
           name: true,
           yield: true,
+          minimumServingsThreshold: true,
           yieldUnit: {
             select: {
               abbreviation: true,
@@ -64,6 +78,7 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
       id: true,
       name: true,
       yield: true,
+      minimumServingsThreshold: true,
       yieldUnit: {
         select: {
           abbreviation: true,
@@ -73,10 +88,24 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
     orderBy: { name: "asc" },
   });
 
-  // Get current property scope from cookie
-  const cookieStore = await cookies();
-  const currentScope = cookieStore.get("admin_property_scope")?.value;
-  const currentPropertyId = currentScope && currentScope !== "ALL" ? currentScope : null;
+  // Get categories for the current property or global
+  const categories = await db.menuCategory.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { propertyId: null }, // Global categories
+        { propertyId: menuItem.propertyId },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      icon: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
   const currentProperty = currentPropertyId 
     ? properties.find(p => p.id === currentPropertyId) 
     : null;
@@ -86,12 +115,13 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
     id: menuItem.id,
     name: menuItem.name,
     description: menuItem.description,
-    category: menuItem.category,
+    categoryId: menuItem.categoryId,
     sellingPrice: Number(menuItem.sellingPrice),
     recipeId: menuItem.recipeId,
-    image: menuItem.image,
+    imageUrl: menuItem.imageUrl,
     isAvailable: menuItem.isAvailable,
     unavailableReason: menuItem.unavailableReason,
+    availableServings: menuItem.availableServings,
     propertyId: menuItem.propertyId,
   };
 
@@ -100,6 +130,7 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
     name: r.name,
     yield: Number(r.yield),
     yieldUnit: r.yieldUnit.abbreviation,
+    minimumServingsThreshold: r.minimumServingsThreshold,
   }));
 
   return (
@@ -116,6 +147,7 @@ export default async function AdminMenuItemPage({ params }: MenuItemPageProps) {
           menuItem={menuItemData}
           properties={properties}
           recipes={recipesData}
+          categories={categories}
           isEditMode={true}
           currentPropertyId={currentPropertyId}
           currentPropertyName={currentProperty?.name}

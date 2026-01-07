@@ -7,6 +7,7 @@ import Decimal from "decimal.js";
 import { setTableOccupied, setTableDirty } from "./table";
 import { isValidOrderStatusTransition, isValidItemStatusTransition } from "./order-utils";
 import { getPropertyContext, getPropertyFilter } from "@/lib/property-context";
+import { updateMenuItemAvailability } from "@/lib/inventory/menu-availability";
 
 // Helper function to serialize Decimal fields to numbers for client components
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -357,6 +358,7 @@ export async function getOrderById(id: string) {
                 name: true,
                 category: true,
                 sellingPrice: true,
+                imageUrl: true,
               },
             },
           },
@@ -536,8 +538,17 @@ export async function addOrderItem(data: AddOrderItemInput) {
     }
 
     // Check if order can be modified
-    if (!["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS"].includes(order.status)) {
-      return { error: "Cannot add items to this order in its current status" };
+    // Allow adding items to any active order status (OPEN, SENT_TO_KITCHEN, IN_PROGRESS, READY, SERVED)
+    // Only block if PAID, CANCELLED, or VOID
+    if (["PAID", "CANCELLED", "VOID"].includes(order.status)) {
+      return { error: `Cannot add items to order with status ${order.status}` };
+    }
+    
+    // Legacy check just in case, but the above exclusion is better
+    const allowedStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+    if (!allowedStatuses.includes(order.status)) {
+       // Only if we introduce new statuses that shouldn't allow adding
+       return { error: `Cannot add items to order in its current status (${order.status})` };
     }
 
     // Get the menu item
@@ -579,6 +590,7 @@ export async function addOrderItem(data: AddOrderItemInput) {
             name: true,
             category: true,
             sellingPrice: true,
+            imageUrl: true,
           },
         },
       },
@@ -586,6 +598,20 @@ export async function addOrderItem(data: AddOrderItemInput) {
 
     // Recalculate order totals
     await recalculateOrderTotals(data.orderId);
+
+    // Update menu item availability in real-time
+    // This recalculates available servings based on current stock
+    const kitchenWarehouse = await db.warehouse.findFirst({
+      where: {
+        propertyId: order.outlet.propertyId,
+        type: "KITCHEN",
+        isActive: true,
+      },
+    });
+    if (kitchenWarehouse) {
+      // Fire and forget - don't block the order
+      updateMenuItemAvailability(data.menuItemId, kitchenWarehouse.id).catch(console.error);
+    }
 
     revalidatePath("/admin/pos");
     revalidatePath(`/admin/pos/orders/${data.orderId}`);
@@ -618,9 +644,10 @@ export async function removeOrderItem(orderId: string, itemId: string) {
       return { error: "Item does not belong to this order" };
     }
 
-    // Check if order can be modified
-    if (!["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS"].includes(orderItem.order.status)) {
-      return { error: "Cannot remove items from this order in its current status" };
+    // Check if order can be modified - allow any active status
+    const activeStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+    if (!activeStatuses.includes(orderItem.order.status)) {
+      return { error: `Cannot remove items from order with status ${orderItem.order.status}` };
     }
 
     // Check if item has been sent to kitchen
@@ -674,9 +701,10 @@ export async function updateOrderItemQuantity(
       return { error: "Item does not belong to this order" };
     }
 
-    // Check if order can be modified
-    if (!["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS"].includes(orderItem.order.status)) {
-      return { error: "Cannot modify items in this order in its current status" };
+    // Check if order can be modified - allow any active status
+    const activeStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+    if (!activeStatuses.includes(orderItem.order.status)) {
+      return { error: `Cannot modify items in order with status ${orderItem.order.status}` };
     }
 
     // Check if item has been sent to kitchen
@@ -695,6 +723,7 @@ export async function updateOrderItemQuantity(
             name: true,
             category: true,
             sellingPrice: true,
+            imageUrl: true,
           },
         },
       },
@@ -709,6 +738,57 @@ export async function updateOrderItemQuantity(
   } catch (error) {
     console.error("Update Order Item Quantity Error:", error);
     return { error: "Failed to update item quantity" };
+  }
+}
+
+/**
+ * Assign a customer to an order
+ */
+export async function assignCustomerToOrder(orderId: string, customer: {
+  type: "WALKIN" | "HOTEL_GUEST";
+  name: string;
+  bookingId?: string;
+  guestId?: string;
+  phone?: string;
+}) {
+  try {
+    const order = await db.pOSOrder.findUnique({
+      where: { id: orderId }
+    });
+
+    if (!order) {
+      return { error: "Order not found" };
+    }
+
+    const data: any = {};
+    if (customer.type === "HOTEL_GUEST") {
+        data.bookingId = customer.bookingId;
+        data.guestId = customer.guestId;
+        // Optionally append to notes if needed, or rely on booking relation
+    } else {
+        // Walk-in
+        // We don't have a customerName field, so we'll append to notes if not there
+        const notePrefix = "Customer: ";
+        const newNote = `${notePrefix}${customer.name}${customer.phone ? ` (${customer.phone})` : ""}`;
+        
+        let notes = order.notes || "";
+        // Remove existing customer note if any to avoid duplicates logic? 
+        // For simplicity, just append or replace if matches pattern?
+        // Let's just append for now or set it.
+        // Simple approach: Prepend
+        data.notes = order.notes ? `${newNote}\n${order.notes}` : newNote;
+    }
+
+    await db.pOSOrder.update({
+        where: { id: orderId },
+        data
+    });
+
+    revalidatePath("/admin/pos");
+    return { success: true };
+  } catch (error) {
+    console.error("Assign Customer Error:", error);
+    return { error: "Failed to assign customer" };
   }
 }
 
@@ -1340,8 +1420,11 @@ export async function sendToKitchen(orderId: string) {
       return { error: "Order not found" };
     }
 
-    // Validate status transition
-    if (!isValidOrderStatusTransition(order.status, "SENT_TO_KITCHEN")) {
+    // Define active statuses that allow sending additional items
+    const activeStatuses = ["OPEN", "SENT_TO_KITCHEN", "IN_PROGRESS", "READY", "SERVED"];
+    
+    // Block if order is closed/paid/cancelled/void
+    if (!activeStatuses.includes(order.status)) {
       return { error: `Cannot send order to kitchen from status ${order.status}` };
     }
 
@@ -1358,12 +1441,17 @@ export async function sendToKitchen(orderId: string) {
 
     const now = new Date();
 
+    // Determine the new order status:
+    // - For OPEN orders: transition to SENT_TO_KITCHEN
+    // - For already-active orders: keep the current status (don't regress)
+    const newOrderStatus = order.status === "OPEN" ? "SENT_TO_KITCHEN" : order.status;
+
     // Update order status and all pending items
     const [updatedOrder] = await db.$transaction([
-      // Update order status
+      // Update order status (may be the same for active orders)
       db.pOSOrder.update({
         where: { id: orderId },
-        data: { status: "SENT_TO_KITCHEN" },
+        data: { status: newOrderStatus },
         include: {
           outlet: {
             select: {

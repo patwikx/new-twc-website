@@ -34,6 +34,7 @@ interface OpenShiftDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   outlets: Outlet[];
+  defaultOutletId?: string;
   cashierId: string;
   cashierName: string;
 }
@@ -42,6 +43,7 @@ export function OpenShiftDialog({
   open,
   onOpenChange,
   outlets,
+  defaultOutletId,
   cashierId,
   cashierName,
 }: OpenShiftDialogProps) {
@@ -54,11 +56,11 @@ export function OpenShiftDialog({
   // Reset form when dialog opens
   React.useEffect(() => {
     if (open) {
-      setOutletId(outlets[0]?.id || "");
+      setOutletId(defaultOutletId || outlets[0]?.id || "");
       setStartingCash("0.00");
       setNotes("");
     }
-  }, [open, outlets]);
+  }, [open, outlets, defaultOutletId]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-PH", {

@@ -45,18 +45,22 @@ import Link from "next/link";
 import { deleteMenuItem, setMenuItemAvailable, setMenuItemUnavailable } from "@/lib/inventory/menu-item";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { MenuCategory } from "@prisma/client";
 
+interface MenuItemCategory {
+  id: string;
+  name: string;
+  color: string | null;
+}
 
 interface MenuItemData {
   id: string;
   name: string;
   description: string | null;
-  category: MenuCategory;
+  category: MenuItemCategory;
   sellingPrice: number;
   isAvailable: boolean;
   unavailableReason: string | null;
-  image: string | null;
+  imageUrl: string | null;
   propertyId: string;
   propertyName: string;
   recipe: {
@@ -88,21 +92,23 @@ interface MenuItemsTableProps {
   recipes: Recipe[];
 }
 
-const CATEGORY_LABELS: Record<MenuCategory, string> = {
-  APPETIZER: "Appetizer",
-  MAIN_COURSE: "Main Course",
-  DESSERT: "Dessert",
-  BEVERAGE: "Beverage",
-  SIDE_DISH: "Side Dish",
-};
+// Get color class from category color name
+function getCategoryColorClass(color: string | null): string {
+  if (!color) return "bg-neutral-500/20 text-neutral-400 border-neutral-500/30";
+  
+  const colorMap: Record<string, string> = {
+    orange: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    red: "bg-red-500/20 text-red-400 border-red-500/30",
+    green: "bg-green-500/20 text-green-400 border-green-500/30",
+    blue: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    purple: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    pink: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+    yellow: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    cyan: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  };
 
-const CATEGORY_COLORS: Record<MenuCategory, string> = {
-  APPETIZER: "bg-green-500/20 text-green-400 border-green-500/30",
-  MAIN_COURSE: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  DESSERT: "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  BEVERAGE: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  SIDE_DISH: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-};
+  return colorMap[color] || "bg-neutral-500/20 text-neutral-400 border-neutral-500/30";
+}
 
 export function MenuItemsTable({ menuItems, properties, recipes }: MenuItemsTableProps) {
   const router = useRouter();
@@ -133,7 +139,7 @@ export function MenuItemsTable({ menuItems, properties, recipes }: MenuItemsTabl
     }
 
     if (categoryFilter !== "all") {
-      result = result.filter((item) => item.category === categoryFilter);
+      result = result.filter((item) => item.category.id === categoryFilter);
     }
 
     if (availabilityFilter !== "all") {
@@ -144,18 +150,27 @@ export function MenuItemsTable({ menuItems, properties, recipes }: MenuItemsTabl
     return result;
   }, [menuItems, searchQuery, propertyFilter, categoryFilter, availabilityFilter]);
 
+  // Get unique categories from menu items for the filter dropdown
+  const uniqueCategories = React.useMemo(() => {
+    const categoryMap = new Map<string, MenuItemCategory>();
+    menuItems.forEach((item) => {
+      if (!categoryMap.has(item.category.id)) {
+        categoryMap.set(item.category.id, item.category);
+      }
+    });
+    return Array.from(categoryMap.values());
+  }, [menuItems]);
+
   // Group items by category for display
   const groupedItems = React.useMemo(() => {
-    const groups: Record<MenuCategory, MenuItemData[]> = {
-      APPETIZER: [],
-      MAIN_COURSE: [],
-      DESSERT: [],
-      BEVERAGE: [],
-      SIDE_DISH: [],
-    };
+    const groups: Record<string, MenuItemData[]> = {};
 
     filteredItems.forEach((item) => {
-      groups[item.category].push(item);
+      const categoryName = item.category.name;
+      if (!groups[categoryName]) {
+        groups[categoryName] = [];
+      }
+      groups[categoryName].push(item);
     });
 
     return groups;
@@ -279,9 +294,9 @@ export function MenuItemsTable({ menuItems, properties, recipes }: MenuItemsTabl
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
+              {uniqueCategories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -386,9 +401,9 @@ export function MenuItemsTable({ menuItems, properties, recipes }: MenuItemsTabl
                   <TableCell>
                     <Badge
                       variant="outline"
-                      className={CATEGORY_COLORS[item.category]}
+                      className={getCategoryColorClass(item.category.color)}
                     >
-                      {CATEGORY_LABELS[item.category]}
+                      {item.category.name}
                     </Badge>
                   </TableCell>
                   <TableCell>

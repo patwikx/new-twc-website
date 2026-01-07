@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { Prisma, MenuCategory } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import Decimal from "decimal.js";
 import { calculateRecipeCost, checkRecipeAvailability } from "./recipe";
@@ -12,19 +12,19 @@ export interface CreateMenuItemInput {
   propertyId: string;
   name: string;
   description?: string;
-  category: MenuCategory;
+  categoryId: string;
   sellingPrice: number;
   recipeId?: string;
-  image?: string;
+  imageUrl?: string;
 }
 
 export interface UpdateMenuItemInput {
   name?: string;
   description?: string;
-  category?: MenuCategory;
+  categoryId?: string;
   sellingPrice?: number;
   recipeId?: string | null;
-  image?: string | null;
+  imageUrl?: string | null;
   isAvailable?: boolean;
   unavailableReason?: string | null;
 }
@@ -42,15 +42,6 @@ export interface MenuItemProfitability {
 
 // Default target food cost percentage (35%)
 const TARGET_FOOD_COST_PERCENTAGE = 35;
-
-// Valid menu categories
-const VALID_MENU_CATEGORIES: MenuCategory[] = [
-  "APPETIZER",
-  "MAIN_COURSE",
-  "DESSERT",
-  "BEVERAGE",
-  "SIDE_DISH",
-];
 
 // ============================================================================
 // Menu Item CRUD Operations
@@ -78,15 +69,17 @@ export async function createMenuItem(data: CreateMenuItemInput) {
     return { error: "Menu item name is required" };
   }
 
-  if (!data.category) {
+  if (!data.categoryId || data.categoryId.trim() === "") {
     return { error: "Menu item category is required" };
   }
 
-  // Property 19: Validate category
-  if (!VALID_MENU_CATEGORIES.includes(data.category)) {
-    return {
-      error: `Invalid category. Must be one of: ${VALID_MENU_CATEGORIES.join(", ")}`,
-    };
+  // Verify category exists
+  const category = await db.menuCategory.findUnique({
+    where: { id: data.categoryId },
+  });
+
+  if (!category) {
+    return { error: "Category not found" };
   }
 
   // Property 18: Validate selling price
@@ -125,10 +118,10 @@ export async function createMenuItem(data: CreateMenuItemInput) {
         propertyId: data.propertyId,
         name: data.name.trim(),
         description: data.description?.trim() || null,
-        category: data.category,
+        categoryId: data.categoryId,
         sellingPrice: data.sellingPrice,
         recipeId: data.recipeId || null,
-        image: data.image || null,
+        imageUrl: data.imageUrl || null,
         isAvailable: true,
       },
       include: {
@@ -229,7 +222,7 @@ export async function getMenuItemById(id: string) {
  */
 export async function getMenuItems(options?: {
   propertyId?: string;
-  category?: MenuCategory;
+  categoryId?: string;
   isAvailable?: boolean;
   search?: string;
   page?: number;
@@ -249,8 +242,8 @@ export async function getMenuItems(options?: {
       }
     }
 
-    if (options?.category) {
-      where.category = options.category;
+    if (options?.categoryId) {
+      where.categoryId = options.categoryId;
     }
 
     if (options?.isAvailable !== undefined) {
@@ -286,7 +279,7 @@ export async function getMenuItems(options?: {
             },
           },
         },
-        orderBy: [{ category: "asc" }, { name: "asc" }],
+        orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
         skip,
         take: pageSize,
       }),
@@ -321,27 +314,30 @@ export async function getMenuItemsByProperty(propertyId: string) {
         propertyId,
         isAvailable: true,
       },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        category: true,
-        sellingPrice: true,
-        image: true,
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
       },
-      orderBy: [{ category: "asc" }, { name: "asc" }],
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
     });
 
-    // Group by category
+    // Group by category name
     const groupedItems = menuItems.reduce(
       (acc, item) => {
-        if (!acc[item.category]) {
-          acc[item.category] = [];
+        const categoryName = item.category.name;
+        if (!acc[categoryName]) {
+          acc[categoryName] = [];
         }
-        acc[item.category].push(item);
+        acc[categoryName].push(item);
         return acc;
       },
-      {} as Record<MenuCategory, typeof menuItems>
+      {} as Record<string, typeof menuItems>
     );
 
     return groupedItems;
@@ -382,13 +378,14 @@ export async function updateMenuItem(id: string, data: UpdateMenuItemInput) {
     }
 
     // Validate and set category
-    if (data.category !== undefined) {
-      if (!VALID_MENU_CATEGORIES.includes(data.category)) {
-        return {
-          error: `Invalid category. Must be one of: ${VALID_MENU_CATEGORIES.join(", ")}`,
-        };
+    if (data.categoryId !== undefined) {
+      const category = await db.menuCategory.findUnique({
+        where: { id: data.categoryId },
+      });
+      if (!category) {
+        return { error: "Category not found" };
       }
-      updateData.category = data.category;
+      updateData.category = { connect: { id: data.categoryId } };
     }
 
     // Validate and set selling price
@@ -420,9 +417,9 @@ export async function updateMenuItem(id: string, data: UpdateMenuItemInput) {
       }
     }
 
-    // Set image
-    if (data.image !== undefined) {
-      updateData.image = data.image || null;
+    // Set imageUrl
+    if (data.imageUrl !== undefined) {
+      updateData.imageUrl = data.imageUrl || null;
     }
 
     // Set availability

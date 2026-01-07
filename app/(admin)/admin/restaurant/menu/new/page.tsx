@@ -11,6 +11,11 @@ export default async function NewMenuItemPage() {
     redirect("/auth/login");
   }
 
+  // Get current property scope from cookie
+  const cookieStore = await cookies();
+  const currentScope = cookieStore.get("admin_property_scope")?.value;
+  const currentPropertyId = currentScope && currentScope !== "ALL" ? currentScope : null;
+
   // Get properties for dropdown
   const properties = await db.property.findMany({
     select: {
@@ -27,6 +32,7 @@ export default async function NewMenuItemPage() {
       id: true,
       name: true,
       yield: true,
+      minimumServingsThreshold: true,
       yieldUnit: {
         select: {
           abbreviation: true,
@@ -36,10 +42,24 @@ export default async function NewMenuItemPage() {
     orderBy: { name: "asc" },
   });
 
-  // Get current property scope from cookie
-  const cookieStore = await cookies();
-  const currentScope = cookieStore.get("admin_property_scope")?.value;
-  const currentPropertyId = currentScope && currentScope !== "ALL" ? currentScope : null;
+  // Get categories for the current property or global
+  const categories = await db.menuCategory.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { propertyId: null }, // Global categories
+        { propertyId: currentPropertyId || undefined },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      icon: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
   const currentProperty = currentPropertyId 
     ? properties.find(p => p.id === currentPropertyId) 
     : null;
@@ -49,6 +69,7 @@ export default async function NewMenuItemPage() {
     name: r.name,
     yield: Number(r.yield),
     yieldUnit: r.yieldUnit.abbreviation,
+    minimumServingsThreshold: r.minimumServingsThreshold,
   }));
 
   return (
@@ -64,6 +85,7 @@ export default async function NewMenuItemPage() {
         <MenuItemForm
           properties={properties}
           recipes={recipesData}
+          categories={categories}
           isEditMode={false}
           currentPropertyId={currentPropertyId}
           currentPropertyName={currentProperty?.name}
