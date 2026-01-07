@@ -39,6 +39,7 @@ import {
   sendToKitchen,
   assignCustomerToOrder
 } from "@/lib/pos/order";
+import { acknowledgePickup, getReadyItems } from "@/lib/pos/kitchen";
 import { OrderSummary } from "@/components/admin/pos/order-summary";
 import { 
   CurrentOrder, 
@@ -53,6 +54,7 @@ import { searchCheckedInGuests, HotelGuest } from "@/lib/pos/guests";
 import { cn } from "@/lib/utils";
 import { usePOSStore } from "@/store/usePOSStore";
 import { usePOSSocket } from "@/lib/socket";
+import { ReadyForPickupDialog, ReadyItem } from "../pos/ready-for-pickup-dialog";
 
 // Types matching OrderEntry
 
@@ -80,7 +82,7 @@ export function OrderTakerTerminal({
   const { assignCustomer } = usePOSStore();
   
   // Socket.io for real-time sync
-  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll } = usePOSSocket(outletId);
+  const { emitTableUpdate, emitOrderUpdate, emitKitchenUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate } = usePOSSocket(outletId);
 
   const [activeTab, setActiveTab] = React.useState<string>("tables");
   const [selectedTableId, setSelectedTableId] = React.useState<string | null>(null);
@@ -92,9 +94,30 @@ export function OrderTakerTerminal({
   const [itemNotes, setItemNotes] = React.useState("");
   const [isCustomerDialogOpen, setIsCustomerDialogOpen] = React.useState(false);
   const [checkedInGuests, setCheckedInGuests] = React.useState<HotelGuest[]>(initialGuests);
+  const [readyOrders, setReadyOrders] = React.useState<ReadyItem[]>([]);
 
   // Socket.io listeners for real-time sync
   React.useEffect(() => {
+    // Initial fetch of ready items
+    const fetchReadyItems = async () => {
+        try {
+            const items = await getReadyItems(outletId);
+            if (items && items.length > 0) {
+                console.log("Found existing ready items:", items);
+                // Fix: map the server-side items to ReadyItem type to ensure compatibility
+                setReadyOrders(prev => {
+                    // Filter out duplicates
+                    const newItems = items.filter(item => !prev.some(p => p.id === item.id));
+                    return [...prev, ...newItems];
+                });
+            }
+        } catch (error) {
+            console.error("Failed to fetch ready items:", error);
+        }
+    };
+    
+    fetchReadyItems();
+
     const unsubTableUpdate = onTableUpdate((data) => {
       console.log("[Socket] Table update received:", data);
       router.refresh();
@@ -119,12 +142,45 @@ export function OrderTakerTerminal({
       router.refresh();
     });
 
+    const unsubKitchenUpdate = onKitchenUpdate((data) => {
+      console.log("[Socket] Kitchen update received:", data);
+      
+      if (data.action === "item_ready" && data.data) {
+        console.log("[Socket] Valid item_ready event:", data.data);
+        // data.data is the order item with order and table
+        const item = data.data;
+        // Transform to ReadyItem
+        const readyItem: ReadyItem = {
+           id: item.id,
+           name: item.menuItem.name,
+           quantity: item.quantity,
+           tableNumber: item.order?.table?.number || null,
+           orderNumber: item.order?.orderNumber || "Unknown",
+           orderId: item.order?.id || ""
+        };
+        
+        // Add to queue if not already there
+        setReadyOrders(prev => {
+           const exists = prev.find(i => i.id === readyItem.id);
+           if (exists) {
+             console.log("[Socket] Item already in ready queue:", readyItem.id);
+             return prev;
+           }
+           console.log("[Socket] Adding item to ready queue:", readyItem);
+           return [...prev, readyItem];
+        });
+      }
+      
+      router.refresh();
+    });
+
     return () => {
       unsubTableUpdate();
       unsubOrderUpdate();
       unsubRefreshAll();
+      unsubKitchenUpdate();
     };
-  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, router, currentOrder?.id]);
+  }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate, router, currentOrder?.id]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
@@ -233,27 +289,44 @@ export function OrderTakerTerminal({
              
              setCurrentOrder((prev) => {
                 if (!prev) return prev;
-                const items = [...prev.items, {
-                    id: newItem.id,
-                    menuItemId: newItem.menuItemId,
-                    menuItemName: newItem.menuItem.name,
-                    menuItemCategory: newItem.menuItem.category?.name || "Uncategorized",
-                    quantity: newItem.quantity,
-                    unitPrice: Number(newItem.unitPrice),
-                    modifiers: newItem.modifiers,
-                    notes: newItem.notes,
-                    status: newItem.status,
-                    menuItemImage: newItem.menuItem.imageUrl
-                }];
                 
+                // Check if item already exists (merged by backend)
+                const existingItemIndex = prev.items.findIndex(i => i.id === newItem.id);
+                let newItems = [...prev.items];
+
+                if (existingItemIndex >= 0) {
+                    // Update existing item
+                    newItems[existingItemIndex] = {
+                        ...newItems[existingItemIndex],
+                        quantity: newItem.quantity, // Backend returns total qty
+                        unitPrice: Number(newItem.unitPrice),
+                        modifiers: newItem.modifiers,
+                        notes: newItem.notes
+                    };
+                } else {
+                    // Add new item
+                    newItems.push({
+                        id: newItem.id,
+                        menuItemId: newItem.menuItemId,
+                        menuItemName: newItem.menuItem.name,
+                        menuItemCategory: newItem.menuItem.category?.name || "Uncategorized",
+                        quantity: newItem.quantity,
+                        unitPrice: Number(newItem.unitPrice),
+                        modifiers: newItem.modifiers,
+                        notes: newItem.notes,
+                        status: newItem.status,
+                        menuItemImage: newItem.menuItem.imageUrl
+                    });
+                }
+
                 return {
                     ...prev,
-                    items,
-                    subtotal: totals?.subtotal ?? items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0),
-                    taxAmount: totals?.taxAmount ?? prev.taxAmount,
-                    serviceCharge: totals?.serviceCharge ?? prev.serviceCharge,
-                    discountAmount: totals?.discountAmount ?? prev.discountAmount,
-                    total: totals?.total ?? (items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0) + prev.taxAmount + prev.serviceCharge - prev.discountAmount)
+                    items: newItems,
+                    subtotal: totals?.subtotal || prev.subtotal,
+                    taxAmount: totals?.taxAmount || prev.taxAmount,
+                    serviceCharge: totals?.serviceCharge || prev.serviceCharge,
+                    discountAmount: totals?.discountAmount || prev.discountAmount,
+                    total: totals?.total || prev.total
                 };
              });
              toast.success(`Added ${quantity}x ${pendingMenuItem.name}`);
@@ -448,6 +521,7 @@ export function OrderTakerTerminal({
       
       // Emit socket event for real-time sync
       emitOrderUpdate(currentOrder.id, "sent_to_kitchen");
+      emitKitchenUpdate(currentOrder.id, "new_order", { orderNumber: currentOrder.orderNumber });
       
       router.refresh();
     } catch (error) {
@@ -760,6 +834,37 @@ export function OrderTakerTerminal({
         tableNumber={tables.find(t=>t.id===selectedTableId)?.number || ""}
         checkedInGuests={checkedInGuests}
         onAssign={handleAssignCustomer}
+      />
+      <ReadyForPickupDialog 
+        readyItem={readyOrders.length > 0 ? readyOrders[0] : null}
+        onClose={() => {
+           // Do nothing for now
+        }}
+        onAcknowledge={async (itemId: string) => {
+           // Call server action to update status to PICKED_UP
+           try {
+              // Find the item to get details for socket
+              const item = readyOrders.find(i => i.id === itemId);
+              
+              const result = await acknowledgePickup(itemId);
+              if (result.success) {
+                  toast.success("Item picked up");
+                  setReadyOrders(prev => prev.filter(i => i.id !== itemId));
+                  
+                  // Emit socket event to update KDS
+                  if (item) {
+                      emitKitchenUpdate(item.orderId, "item_picked_up", { itemId });
+                  }
+                  
+                  router.refresh();
+              } else {
+                  toast.error(result.error || "Failed to acknowledge pickup");
+              }
+           } catch (error) {
+              console.error("Acknowledge error:", error);
+              toast.error("Failed to acknowledge");
+           }
+        }}
       />
     </div>
   );

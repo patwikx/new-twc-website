@@ -56,6 +56,8 @@ import { usePOSSocket } from "@/lib/socket";
 
 
 
+import { ReadyForPickupDialog, ReadyItem } from "./ready-for-pickup-dialog";
+
 interface OrderEntryProps {
   propertyId: string;
   outletId: string;
@@ -87,7 +89,7 @@ export function OrderEntry({
   } = usePOSStore();
   
   // Socket.io for real-time sync
-  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll } = usePOSSocket(outletId);
+  const { emitTableUpdate, emitOrderUpdate, onTableUpdate, onOrderUpdate, onTablesRefreshAll, onKitchenUpdate } = usePOSSocket(outletId);
 
   const [activeTab, setActiveTab] = React.useState<string>("tables");
   const [selectedTableId, setSelectedTableId] = React.useState<string | null>(
@@ -113,6 +115,7 @@ export function OrderEntry({
   const [checkedInGuests, setCheckedInGuests] = React.useState<HotelGuest[]>([]);
   const [voidTarget, setVoidTarget] = React.useState<{ type: "order" | "item", itemId?: string, itemName?: string, amount: number } | null>(null);
   const [discountTypes, setDiscountTypes] = React.useState<DiscountType[]>([]);
+  const [readyOrders, setReadyOrders] = React.useState<ReadyItem[]>([]);
 
   // Fetch guests when dialog opens
   React.useEffect(() => {
@@ -147,10 +150,37 @@ export function OrderEntry({
       router.refresh();
     });
 
+    const unsubKitchenUpdate = onKitchenUpdate((data) => {
+      console.log("[Socket] Kitchen update received:", data);
+      
+      if (data.action === "item_ready" && data.data) {
+        // data.data is the order item with order and table
+        const item = data.data;
+        // Transform to ReadyItem
+        const readyItem: ReadyItem = {
+           id: item.id,
+           name: item.menuItem.name,
+           quantity: item.quantity,
+           tableNumber: item.order?.table?.number || null,
+           orderNumber: item.order?.orderNumber || "Unknown",
+           orderId: item.order?.id || ""
+        };
+        
+        // Add to queue if not already there
+        setReadyOrders(prev => {
+           if (prev.find(i => i.id === readyItem.id)) return prev;
+           return [...prev, readyItem];
+        });
+      }
+      
+      router.refresh();
+    });
+
     return () => {
       unsubTableUpdate();
       unsubOrderUpdate();
       unsubRefreshAll();
+      unsubKitchenUpdate();
     };
   }, [onTableUpdate, onOrderUpdate, onTablesRefreshAll, router, currentOrder?.id]);
 
@@ -889,6 +919,15 @@ export function OrderEntry({
         onAssign={handleAssignCustomer}
         checkedInGuests={checkedInGuests}
         onSearchGuests={searchCheckedInGuests}
+      />
+      <ReadyForPickupDialog 
+        readyItem={readyOrders.length > 0 ? readyOrders[0] : null}
+        onClose={() => {
+           // Do nothing for now, enforce acknowledgment or let it persist
+        }}
+        onAcknowledge={(itemId: string) => {
+           setReadyOrders(prev => prev.filter(i => i.id !== itemId));
+        }}
       />
     </div>
   );

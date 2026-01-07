@@ -572,29 +572,64 @@ export async function addOrderItem(data: AddOrderItemInput) {
       return { error: "Menu item does not belong to this property" };
     }
 
-    // Create the order item
-    const orderItem = await db.pOSOrderItem.create({
-      data: {
-        orderId: data.orderId,
-        menuItemId: data.menuItemId,
-        quantity: data.quantity,
-        unitPrice: menuItem.sellingPrice,
-        modifiers: data.modifiers || null,
-        notes: data.notes || null,
-        status: "PENDING",
-      },
-      include: {
-        menuItem: {
-          select: {
-            id: true,
-            name: true,
-            category: true,
-            sellingPrice: true,
-            imageUrl: true,
-          },
-        },
-      },
+    // Check for existing pending item with same details
+    const existingItem = await db.pOSOrderItem.findFirst({
+        where: {
+            orderId: data.orderId,
+            menuItemId: data.menuItemId,
+            status: "PENDING",
+            // Use precise filtering for modifiers and notes
+            modifiers: data.modifiers || null,
+            notes: data.notes || null
+        }
     });
+
+    let orderItem;
+
+    if (existingItem) {
+        // Update quantity of existing item
+        orderItem = await db.pOSOrderItem.update({
+            where: { id: existingItem.id },
+            data: {
+                quantity: existingItem.quantity + data.quantity
+            },
+            include: {
+                menuItem: {
+                  select: {
+                    id: true,
+                    name: true,
+                    category: true,
+                    sellingPrice: true,
+                    imageUrl: true,
+                  },
+                },
+            }
+        });
+    } else {
+        // Create the order item
+        orderItem = await db.pOSOrderItem.create({
+          data: {
+            orderId: data.orderId,
+            menuItemId: data.menuItemId,
+            quantity: data.quantity,
+            unitPrice: menuItem.sellingPrice,
+            modifiers: data.modifiers || null,
+            notes: data.notes || null,
+            status: "PENDING",
+          },
+          include: {
+            menuItem: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                sellingPrice: true,
+                imageUrl: true,
+              },
+            },
+          },
+        });
+    }
 
     // Recalculate order totals
     await recalculateOrderTotals(data.orderId);

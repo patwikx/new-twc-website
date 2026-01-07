@@ -10,6 +10,7 @@ import { OrderItemStatus, POSOrderStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useKitchenSocket } from "@/lib/socket";
 import { markItemPreparing, markItemReady, markOrderReady } from "@/lib/pos/kitchen";
 
 interface KitchenOrderItem {
@@ -27,6 +28,7 @@ interface KitchenOrderItem {
 }
 
 interface KitchenOrderCardProps {
+  outletId: string;
   orderId: string;
   orderNumber: string;
   tableNumber: string | null;
@@ -39,15 +41,27 @@ interface KitchenOrderCardProps {
 }
 
 const ITEM_STATUS_COLORS: Record<OrderItemStatus, string> = {
-  PENDING: "bg-neutral-500/20 text-neutral-400 border-neutral-500/30",
-  SENT: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  PREPARING: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  READY: "bg-green-500/20 text-green-400 border-green-500/30",
-  SERVED: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  CANCELLED: "bg-red-500/20 text-red-400 border-red-500/30",
+  PENDING: "text-neutral-500",
+  SENT: "text-blue-400",
+  PREPARING: "text-orange-400",
+  READY: "text-green-400",
+  PICKED_UP: "text-purple-400",
+  SERVED: "text-purple-400",
+  CANCELLED: "text-red-400",
+};
+
+const ITEM_STATUS_BG: Record<OrderItemStatus, string> = {
+  PENDING: "border-neutral-500/50",
+  SENT: "border-blue-500/50",
+  PREPARING: "border-orange-500/50",
+  READY: "border-green-500/50",
+  PICKED_UP: "border-purple-500/50",
+  SERVED: "border-purple-500/50",
+  CANCELLED: "border-red-500/50",
 };
 
 export function KitchenOrderCard({
+  outletId,
   orderId,
   orderNumber,
   tableNumber,
@@ -60,6 +74,7 @@ export function KitchenOrderCard({
   const router = useRouter();
   const [loadingItemId, setLoadingItemId] = React.useState<string | null>(null);
   const [isMarkingAllReady, setIsMarkingAllReady] = React.useState(false);
+  const { emitKitchenUpdate } = useKitchenSocket(outletId);
 
   const formatAge = (minutes: number) => {
     if (minutes < 60) return `${minutes}m`;
@@ -76,6 +91,7 @@ export function KitchenOrderCard({
         toast.error(result.error);
       } else {
         toast.success("Item marked as preparing");
+        emitKitchenUpdate(orderId, "item_started", result.data);
         router.refresh();
       }
     } catch {
@@ -93,6 +109,8 @@ export function KitchenOrderCard({
         toast.error(result.error);
       } else {
         toast.success("Item marked as ready");
+        // Result.data includes order and table info due to recent backend change
+        emitKitchenUpdate(orderId, "item_ready", result.data);
         router.refresh();
       }
     } catch {
@@ -110,6 +128,15 @@ export function KitchenOrderCard({
         toast.error(result.error);
       } else {
         toast.success("All items marked as ready");
+        
+        // Emit item_ready for each updated item so the Order Taker dialog appears
+        if (result.data && Array.isArray(result.data)) {
+            result.data.forEach((item: any) => {
+                emitKitchenUpdate(orderId, "item_ready", item);
+            });
+        }
+
+        emitKitchenUpdate(orderId, "order_ready", { orderId, orderNumber });
         router.refresh();
       }
     } catch {
@@ -179,77 +206,83 @@ export function KitchenOrderCard({
         {items.map((item) => (
           <div
             key={item.id}
-            className={cn(
-              "flex items-start justify-between p-3 rounded-lg",
-              item.status === "READY"
-                ? "bg-green-500/10 border border-green-500/20"
-                : item.status === "PREPARING"
-                ? "bg-orange-500/10 border border-orange-500/20"
-                : "bg-neutral-800/50 border border-white/5"
-            )}
+            className="grid grid-cols-[auto_1fr_auto] gap-4 py-3 border-b border-dashed border-white/10 last:border-0 first:pt-0 last:pb-0"
           >
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">{item.quantity}×</span>
-                <span className="font-medium text-white">{item.menuItemName}</span>
-                <Badge
-                  variant="outline"
-                  className={cn("text-xs", ITEM_STATUS_COLORS[item.status])}
-                >
-                  {item.status}
-                </Badge>
+              {/* Quantity */}
+              <div className="flex items-start justify-center pt-0.5 min-w-[2rem]">
+                <span className={cn(
+                  "text-xl font-bold font-mono",
+                  item.status === 'READY' ? "text-green-400" :
+                  item.status === 'PREPARING' ? "text-orange-400" :
+                  "text-neutral-500"
+                )}>
+                  {item.quantity}x
+                </span>
               </div>
-              {item.modifiers && (
-                <p className="text-sm text-neutral-400 mt-1">{item.modifiers}</p>
-              )}
-              {item.notes && (
-                <p className="text-sm text-orange-400 mt-1 font-medium">
-                  ⚠️ {item.notes}
-                </p>
-              )}
-            </div>
 
-            <div className="flex items-center gap-2 ml-4">
-              {item.status === "SENT" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 border-orange-500/30 text-orange-400 hover:bg-orange-500/20"
-                  onClick={() => handleStartPreparing(item.id)}
-                  disabled={loadingItemId === item.id}
-                >
-                  {loadingItemId === item.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <ChefHat className="h-4 w-4 mr-1" />
-                      Start
-                    </>
-                  )}
-                </Button>
-              )}
-              {item.status === "PREPARING" && (
-                <Button
-                  size="sm"
-                  className="h-8 bg-green-600 hover:bg-green-700"
-                  onClick={() => handleMarkReady(item.id)}
-                  disabled={loadingItemId === item.id}
-                >
-                  {loadingItemId === item.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-1" />
-                      Ready
-                    </>
-                  )}
-                </Button>
-              )}
-              {item.status === "READY" && (
-                <CheckCircle className="h-5 w-5 text-green-400" />
-              )}
+              {/* Details */}
+              <div className="flex flex-col min-w-0 gap-1">
+                <span className={cn(
+                  "font-medium text-base leading-snug break-words",
+                   item.status === 'READY' ? "text-white" : "text-neutral-300"
+                )}>
+                  {item.menuItemName}
+                </span>
+                {item.modifiers && (
+                  <p className="text-xs text-neutral-500 font-medium leading-tight">{item.modifiers}</p>
+                )}
+                {item.notes && (
+                  <p className="text-xs text-red-400 mt-1 font-medium flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {item.notes}
+                  </p>
+                )}
+              </div>
+
+              {/* Status & Actions */}
+              <div className="flex flex-col items-end gap-2">
+                 {item.status === "READY" ? (
+                   <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-500/10 text-green-400 rounded text-[10px] font-bold tracking-wider uppercase border border-green-500/20 animate-pulse">
+                      Pickup
+                   </div>
+                 ) : item.status === "PREPARING" ? (
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-orange-400/80">Prep</span>
+                 ) : (
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-neutral-500">Queued</span>
+                 )}
+
+                {item.status === "SENT" && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/5"
+                    onClick={() => handleStartPreparing(item.id)}
+                    disabled={loadingItemId === item.id}
+                  >
+                    {loadingItemId === item.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ChefHat className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                {item.status === "PREPARING" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-3 bg-green-500/10 text-green-400 hover:bg-green-500/20 hover:text-green-300 border border-green-500/20 text-xs font-medium"
+                    onClick={() => handleMarkReady(item.id)}
+                    disabled={loadingItemId === item.id}
+                  >
+                    {loadingItemId === item.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      "Ready"
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
         ))}
       </div>
 
@@ -265,16 +298,18 @@ export function KitchenOrderCard({
         {(sentCount > 0 || preparingCount > 0) && (
           <Button
             size="sm"
-            className="h-8 bg-green-600 hover:bg-green-700"
+            className="h-8 bg-green-600 hover:bg-green-700 ml-4"
             onClick={handleMarkAllReady}
             disabled={isMarkingAllReady}
           >
             {isMarkingAllReady ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
             ) : (
-              <CheckCircle className="h-4 w-4 mr-1" />
+              <>
+                <CheckCircle className="h-4 w-4 mr-1" />
+                All Ready
+              </>
             )}
-            All Ready
           </Button>
         )}
       </div>
