@@ -1,7 +1,7 @@
 "use client";
 
 import { io, Socket } from "socket.io-client";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "ws://localhost:3001";
 
@@ -27,6 +27,8 @@ function getSocket(): Socket {
 export function usePOSSocket(outletId: string | undefined) {
   const socketRef = useRef<Socket | null>(null);
   const hasJoinedRef = useRef(false);
+  const prevOutletIdRef = useRef<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     if (!outletId) return;
@@ -34,13 +36,25 @@ export function usePOSSocket(outletId: string | undefined) {
     const socket = getSocket();
     socketRef.current = socket;
 
+    // Reset hasJoinedRef when outletId changes
+    if (prevOutletIdRef.current !== outletId) {
+      // Leave previous outlet room if we were in one
+      if (prevOutletIdRef.current && hasJoinedRef.current) {
+        socket.emit("leave:outlet", prevOutletIdRef.current);
+        console.log(`[Socket] Left outlet: ${prevOutletIdRef.current}`);
+      }
+      hasJoinedRef.current = false;
+      prevOutletIdRef.current = outletId;
+    }
+
     // Connect if not already connected
     if (!socket.connected) {
       socket.connect();
     }
 
-    // Join outlet room when connected
+    // Named handlers for proper cleanup
     const handleConnect = () => {
+      setIsConnected(true);
       if (outletId && !hasJoinedRef.current) {
         socket.emit("join:outlet", outletId);
         hasJoinedRef.current = true;
@@ -48,21 +62,27 @@ export function usePOSSocket(outletId: string | undefined) {
       }
     };
 
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      hasJoinedRef.current = false;
+      console.log("[Socket] Disconnected");
+    };
+
     // If already connected, join immediately
     if (socket.connected && !hasJoinedRef.current) {
+      setIsConnected(true);
       socket.emit("join:outlet", outletId);
       hasJoinedRef.current = true;
       console.log(`[Socket] Already connected, joined outlet: ${outletId}`);
     }
 
     socket.on("connect", handleConnect);
-    socket.on("disconnect", () => {
-      hasJoinedRef.current = false;
-      console.log("[Socket] Disconnected");
-    });
+    socket.on("disconnect", handleDisconnect);
 
     return () => {
       socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      hasJoinedRef.current = false;
       // Don't disconnect - keep connection alive for other components
     };
   }, [outletId]);
@@ -126,7 +146,7 @@ export function usePOSSocket(outletId: string | undefined) {
   }, []);
 
   return {
-    isConnected: socketRef.current?.connected ?? false,
+    isConnected,
     emitTableUpdate,
     emitOrderUpdate,
     emitTablesRefresh,
@@ -142,6 +162,8 @@ export function usePOSSocket(outletId: string | undefined) {
 export function useBookingSocket(bookingId: string | undefined) {
   const socketRef = useRef<Socket | null>(null);
   const hasJoinedRef = useRef(false);
+  const prevBookingIdRef = useRef<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -149,13 +171,25 @@ export function useBookingSocket(bookingId: string | undefined) {
     const socket = getSocket();
     socketRef.current = socket;
 
+    // Reset hasJoinedRef when bookingId changes
+    if (prevBookingIdRef.current !== bookingId) {
+      // Leave previous booking room if we were in one
+      if (prevBookingIdRef.current && hasJoinedRef.current) {
+        socket.emit("leave:booking", prevBookingIdRef.current);
+        console.log(`[Socket] Left booking: ${prevBookingIdRef.current}`);
+      }
+      hasJoinedRef.current = false;
+      prevBookingIdRef.current = bookingId;
+    }
+
     // Connect if not already connected
     if (!socket.connected) {
       socket.connect();
     }
 
-    // Join booking room when connected
+    // Named handlers for proper cleanup
     const handleConnect = () => {
+      setIsConnected(true);
       if (bookingId && !hasJoinedRef.current) {
         socket.emit("join:booking", bookingId);
         hasJoinedRef.current = true;
@@ -163,21 +197,27 @@ export function useBookingSocket(bookingId: string | undefined) {
       }
     };
 
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      hasJoinedRef.current = false;
+      console.log("[Socket] Disconnected from booking");
+    };
+
     // If already connected, join immediately
     if (socket.connected && !hasJoinedRef.current) {
+      setIsConnected(true);
       socket.emit("join:booking", bookingId);
       hasJoinedRef.current = true;
       console.log(`[Socket] Already connected, joined booking: ${bookingId}`);
     }
 
     socket.on("connect", handleConnect);
-    socket.on("disconnect", () => {
-      hasJoinedRef.current = false;
-      console.log("[Socket] Disconnected from booking");
-    });
+    socket.on("disconnect", handleDisconnect);
 
     return () => {
       socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      hasJoinedRef.current = false;
     };
   }, [bookingId]);
 
@@ -191,7 +231,7 @@ export function useBookingSocket(bookingId: string | undefined) {
   }, []);
 
   return {
-    isConnected: socketRef.current?.connected ?? false,
+    isConnected,
     onBookingUpdate,
   };
 }
