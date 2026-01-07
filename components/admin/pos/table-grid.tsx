@@ -25,6 +25,7 @@ import { POSTableStatus } from "@prisma/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { createTable, updateTableStatus, forceClearTable } from "@/lib/pos/table";
+import { usePOSSocket } from "@/lib/socket";
 
 interface TableOrder {
   id: string;
@@ -75,6 +76,28 @@ export function TableGrid({
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
   const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+
+  // Socket.io for real-time sync
+  const { emitTableUpdate, onTableUpdate, onTablesRefreshAll } = usePOSSocket(outletId);
+
+  // Listen for table updates from other clients
+  React.useEffect(() => {
+    const unsubTableUpdate = onTableUpdate((data) => {
+      console.log("[Socket] Table update received:", data);
+      // Refresh to get latest data
+      router.refresh();
+    });
+
+    const unsubRefreshAll = onTablesRefreshAll(() => {
+      console.log("[Socket] Refresh all command received");
+      router.refresh();
+    });
+
+    return () => {
+      unsubTableUpdate();
+      unsubRefreshAll();
+    };
+  }, [onTableUpdate, onTablesRefreshAll, router]);
 
   // New table form state
   const [newTableNumber, setNewTableNumber] = React.useState("");
@@ -158,10 +181,12 @@ export function TableGrid({
          result = await updateTableStatus(tableId, newStatus);
       }
 
-      if (result.error) {
+      if ("error" in result && result.error) {
         toast.error(result.error);
       } else {
         toast.success(`Table status updated to ${newStatus.toLowerCase().replace("_", " ")}`);
+        // Emit to other clients via socket
+        emitTableUpdate(tableId, newStatus);
         router.refresh();
       }
     } catch {

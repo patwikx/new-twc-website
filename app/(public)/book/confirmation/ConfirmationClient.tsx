@@ -8,6 +8,7 @@ import { jsPDF } from "jspdf";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useBookingSocket } from "@/lib/socket";
 
 // Define the serialized booking type passed from the server component
 interface SerializedBooking {
@@ -54,29 +55,25 @@ export default function ConfirmationClient({
   const [currentStatus, setCurrentStatus] = useState(initialBooking.status);
   const [currentPaymentStatus, setCurrentPaymentStatus] = useState(initialBooking.paymentStatus);
   const router = useRouter();
+  
+  // WebSocket for real-time payment updates
+  const { onBookingUpdate } = useBookingSocket(initialBooking.id);
 
   useEffect(() => {
-    // Poll for status updates every 5 seconds if pending
+    // Only subscribe if payment is pending
     if (currentStatus === 'PENDING' || currentPaymentStatus === 'UNPAID') {
-      const interval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/bookings/status?id=${initialBooking.id}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status !== currentStatus || data.paymentStatus !== currentPaymentStatus) {
-              setCurrentStatus(data.status);
-              setCurrentPaymentStatus(data.paymentStatus);
-              router.refresh(); // Refresh server components
-            }
-          }
-        } catch (error) {
-          console.error("Polling error:", error);
+      const unsub = onBookingUpdate((data) => {
+        console.log("[Socket] Booking update received:", data);
+        if (data.bookingId === initialBooking.id) {
+          setCurrentStatus(data.status as BookingStatus);
+          setCurrentPaymentStatus(data.paymentStatus as PaymentStatus);
+          router.refresh(); // Refresh server components
         }
-      }, 5000);
+      });
 
-      return () => clearInterval(interval);
+      return () => unsub();
     }
-  }, [currentStatus, currentPaymentStatus, initialBooking.id, router]);
+  }, [currentStatus, currentPaymentStatus, initialBooking.id, router, onBookingUpdate]);
 
   const handleDownloadPDF = async () => {
     const fromDate = initialBooking.items[0]?.checkIn ? new Date(initialBooking.items[0].checkIn) : new Date();
