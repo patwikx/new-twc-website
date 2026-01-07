@@ -50,8 +50,8 @@ import {
   TableData,
   OrderItem,
   CurrentOrder,
+  DiscountType,
 } from "./types";
-import { DiscountType } from "@prisma/client";
 import { usePOSSocket } from "@/lib/socket";
 
 

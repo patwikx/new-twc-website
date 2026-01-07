@@ -130,11 +130,23 @@ export async function applyOrderDiscount(data: {
  * Get available discount types
  */
 export async function getDiscountTypes(propertyId: string) {
-  return db.discountType.findMany({
+  const discountTypes = await db.discountType.findMany({
     where: {
       propertyId,
       isActive: true,
     },
     orderBy: { name: "asc" },
   });
+
+  // Convert Prisma Decimal types to plain numbers for frontend compatibility
+  return discountTypes.map((dt) => ({
+    id: dt.id,
+    code: dt.code,
+    name: dt.name,
+    description: dt.description,
+    percentage: Number(dt.percentage),
+    requiresId: dt.requiresId,
+    requiresApproval: dt.requiresApproval,
+    maxAmount: dt.maxAmount ? Number(dt.maxAmount) : null,
+  }));
 }
